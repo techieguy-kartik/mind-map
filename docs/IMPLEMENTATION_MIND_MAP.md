@@ -52,7 +52,11 @@ mindmap
       SEC and global regulators
       GDELT and permitted RSS
       Procurement patents trials jobs
-      Approved social APIs
+      OpenAlex Crossref grants and spending
+      Mastodon Bluesky and permitted feeds
+      Optional metered X API
+      Approved LinkedIn products only
+      RSSHub route-by-route evaluation
       Hash and deduplicate
       Entity resolution
       Event clustering

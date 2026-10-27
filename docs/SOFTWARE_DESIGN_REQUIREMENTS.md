@@ -92,9 +92,9 @@ The pilot includes manual collection and reviewed evidence. The production pipel
 
 ### Free-first sources
 
-First sources: issuer disclosures, exchange/regulator filings, company investor relations, permitted RSS, GDELT discovery, public professional biographies, government procurement, patents, clinical trials, and accessible job boards. A public webpage is not automatically a permitted API. Each connector needs a source owner, access method, collection/retention rights, rate policy, health state, and deletion policy.
+First sources: issuer disclosures, exchange/regulator filings, company investor relations, permitted RSS, GDELT discovery, public professional biographies, government procurement, patents, clinical trials, open scholarly data, open social networks, and accessible job boards. A public webpage is not automatically a permitted API. Each connector needs a source owner, access method, collection/retention rights, rate policy, health state, and deletion policy. The detailed order and connector controls are in [the free and open-source ingestion plan](OPEN_SOURCE_INGESTION_PLAN.md).
 
-X, LinkedIn, and Truth Social remain unavailable until approved API or licensed access exists. Groq access does not supply news or social data.
+X is an optional metered connector under its current pay-per-use model. LinkedIn monitoring remains restricted to data allowed by an approved product and granted OAuth scopes; its open permissions do not provide arbitrary company-feed reads. Open-source adapters may be evaluated per route, but they do not replace upstream permission or make coverage complete. Groq access does not supply news or social data.
 
 ### Materiality and hypotheses
 
