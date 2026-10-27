@@ -85,7 +85,7 @@ The pilot includes manual collection and reviewed evidence. The production pipel
 - Model ID is configuration, because provider availability changes.
 - Input consists of an entity, question, dataset label, and bounded evidence array.
 - Collected documents are untrusted data and cannot issue tool instructions.
-- Output must validate to `{ result: string, citations: string[] }`.
+- Model output must validate to `{ result: string, citations: string[], alternatives: string[], missing_evidence: string[] }`.
 - Every citation must reference an ID in the supplied evidence array; empty or invented citation arrays fail closed.
 - HTTP 429 becomes deferred, preserving evidence. Provider errors never become conclusions.
 - Daily investigations are capped; 25% of future scheduled inference capacity remains reserved for user questions.

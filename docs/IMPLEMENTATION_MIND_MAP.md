@@ -61,13 +61,35 @@ mindmap
       Entity resolution
       Event clustering
     AI engine
-      Groq adapter
-      Schema validated extraction
-      Citation allow list
-      Materiality ranking
-      Competing hypotheses
-      Quotas and deferred work
-      No private mind reading
+      LangGraph investigation DAG
+        Intent router
+        Hybrid retrieval node
+        Evidence sufficiency gate
+        Groq synthesis node
+        Schema validation node
+        Citation audit node
+        Persisted workflow trace
+      Micro retrieval domains
+        Capital and deals
+        People and leadership
+        Technology
+        Geography and regulation
+        Risk
+        Strategy
+      Retrieval fusion
+        Lexical relevance
+        Temporal recency
+        Evidence tier prior
+        Two hop graph expansion
+        MMR style diversity
+        Token budget packing
+      Trust controls
+        Citation allow list
+        Competing explanations
+        Missing evidence
+        Evidence only fallback
+        Quotas and deferred work
+        No private mind reading
     Platform
       React interface
       FastAPI service
@@ -112,7 +134,7 @@ flowchart LR
     V -->|Supported| E[Temporal event graph]
     Q --> E
     E --> M[Materiality ranking]
-    M --> I[Bounded investigation]
+    M --> I[LangGraph routed investigation]
     I --> H[Strategy hypotheses]
     H --> A[Inbox and dossier]
     A --> F[User review and correction]

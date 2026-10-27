@@ -16,3 +16,4 @@
 .graph-edge-hit:hover,.graph-edge-hit:focus{fill:#dbe8d5;stroke:#446d50;stroke-width:2.5}
 .graph-selected{z-index:2}
 @media(max-width:720px){.graph-canvas:not(.compact)>svg{height:400px}}
+.evidence-link small{display:block;color:#a1ad98;margin-top:5px;font-size:9px}.workflow-trace{display:flex;gap:7px;flex-wrap:wrap}.workflow-trace div{display:flex;align-items:center;gap:5px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;color:#7d946b;font-size:9px}

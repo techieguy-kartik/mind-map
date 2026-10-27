@@ -24,7 +24,7 @@ def connect():
         db.close()
 
 
-def initialize():
+def initialize(*, recover_jobs=True):
     with connect() as db:
         db.executescript('''
         CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(kind,id));
@@ -39,12 +39,14 @@ def initialize():
                     db.execute('INSERT OR IGNORE INTO records VALUES(?,?,?)',(kind,row['id'],json.dumps(row)))
             db.executemany('INSERT OR IGNORE INTO watchlist VALUES(?)',[(x,) for x in ('reliance','jio','tata-power','tata-sons','nvidia')])
             db.execute("INSERT INTO meta VALUES('seed_version','1')")
-        # In-process jobs cannot survive a crash; never leave a false running status.
-        for row in db.execute('SELECT id,data FROM investigations').fetchall():
-            data=json.loads(row['data'])
-            if data['status'] in ('queued','running'):
-                data.update(status='interrupted',error='The server restarted. Submit the investigation again.')
-                db.execute('UPDATE investigations SET data=? WHERE id=?',(json.dumps(data),row['id']))
+        if recover_jobs:
+            # The API recovers local in-process work. An SQS worker startup must
+            # never interrupt queued jobs before it receives them.
+            for row in db.execute('SELECT id,data FROM investigations').fetchall():
+                data=json.loads(row['data'])
+                if data['status'] in ('queued','running'):
+                    data.update(status='interrupted',error='The API server restarted. Submit the investigation again.')
+                    db.execute('UPDATE investigations SET data=? WHERE id=?',(json.dumps(data),row['id']))
 
 
 def records(kind):
@@ -66,6 +68,12 @@ def put(kind, row):
 def save_job(job):
     with connect() as db:
         db.execute('INSERT INTO investigations VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',(job['id'],job['created_at'],json.dumps(job)))
+
+
+def get_job(id):
+    with connect() as db:
+        row=db.execute('SELECT data FROM investigations WHERE id=?',(id,)).fetchone()
+        return json.loads(row['data']) if row else None
 
 
 def jobs():

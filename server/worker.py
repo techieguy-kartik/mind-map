@@ -66,7 +66,7 @@ def run(queue_kind: str, once: bool = False) -> None:
     if not url:
         raise RuntimeError(f'ATLAS_{queue_kind.upper()}_QUEUE_URL is required')
     client = cloud._boto3().client('sqs', region_name=os.getenv('AWS_REGION', 'us-east-1'))
-    db.initialize()
+    db.initialize(recover_jobs=False)
     log.info('worker ready queue=%s', queue_kind)
     while running:
         response = client.receive_message(

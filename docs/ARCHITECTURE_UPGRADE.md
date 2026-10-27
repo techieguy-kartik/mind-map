@@ -2,7 +2,7 @@
 
 ## What was learned from the reference agent
 
-The reference system demonstrates useful production patterns: scheduled multi-source collection, explicit source tiers, temporal facts, durable checkpoints, separate analytical stages, dead-letter recovery, calibration, and operational health checks. Atlas adopts those patterns where the implementation can support them now.
+The reference system demonstrates useful production patterns: scheduled multi-source collection, explicit source tiers, temporal facts, durable checkpoints, separate analytical stages, dead-letter recovery, retrieval routing, graph retrieval, and operational health checks. Atlas adopts those patterns where the implementation can support them now. The implemented LangGraph and retrieval decisions are documented in [LangGraph and hybrid RAG architecture](LANGGRAPH_RAG_ARCHITECTURE.md).
 
 Atlas does not copy claims such as “zero hallucination,” “100% coverage,” or “formal verification” because an LLM, a source scraper, and passing unit tests cannot establish those guarantees. It also avoids silent mock data, committed runtime databases, long-lived AWS keys in CI, and a large dependency graph before the data path needs it.
 
@@ -20,7 +20,8 @@ flowchart TB
     IW --> DB
     AW --> DB
     IW --> EXT[Approved APIs and feeds]
-    AW --> GROQ[Groq bounded synthesis]
+    AW --> RAG[LangGraph routed hybrid RAG]
+    RAG --> GROQ[Groq bounded synthesis]
     IW --> CT[(DynamoDB checkpoints)]
     AW --> CT
     IW --> S3[(Private S3 evidence and run manifests)]
