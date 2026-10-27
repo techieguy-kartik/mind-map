@@ -1,0 +1,8 @@
+export type Entity = {id:string;name:string;initials:string;country:string;sector:string;group:string;color:string;type:string;qualification:string;description:string;demo:boolean};
+export type Evidence = {id:string;text:string;url:string|null;publisher:string;kind:string};
+export type Event = {id:string;entity_id:string;title:string;event_type:string;priority:string;summary:string;entities:string[];published_at:string;observed_at:string;source_id:string;source_name:string;source_url:string|null;status:string;demo:boolean;evidence:Evidence[]};
+export type Edge = {id:string;source:string;target:string;relation:string;event_id:string;evidence:Evidence[];status:string;demo:boolean};
+export type Hypothesis = {id:string;entity_id:string;title:string;status:string;horizon:string;summary:string;supporting:string[];contradicting:string[];alternatives:string[];next_checks:string[];demo:boolean};
+export type Job = {id:string;entity_id:string;created_at:string;question:string;demo:boolean;status:string;mode?:string;result?:string;error?:string;citations?:string[];evidence:{id:string;title:string;summary:string;url:string|null;demo:boolean}[]};
+export type Source = {id:string;name:string;type:string;access:string;status:string;description:string;url:string|null;can_sync:boolean;last_success?:string;last_attempt?:string;inserted?:number;error?:string};
+export type Workspace = {entities:Entity[];events:Event[];edges:Edge[];hypotheses:Hypothesis[];watchlist:string[];investigations:Job[];sources:Source[];settings:{groq_configured:boolean;model:string;daily_limit:number;used_today:number;storage:string;paid_sources:boolean}};

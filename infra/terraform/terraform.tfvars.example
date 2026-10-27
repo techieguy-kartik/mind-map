@@ -1,0 +1,6 @@
+aws_region                      = "us-east-1"
+aws_profile                     = "account2"
+existing_instance_id            = "i-0c04d5f1a37d29ae0"
+existing_instance_role_name     = "nero-lab-ec2-role"
+repository_url                  = "https://github.com/techieguy-kartik/mind-map.git"
+backup_retention_days           = 90

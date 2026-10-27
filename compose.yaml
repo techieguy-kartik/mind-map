@@ -1,0 +1,13 @@
+services:
+  atlas:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file: .env
+    environment:
+      ATLAS_HOST: 0.0.0.0
+    volumes:
+      - atlas-data:/app/var
+    restart: unless-stopped
+volumes:
+  atlas-data:
