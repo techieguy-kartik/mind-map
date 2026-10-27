@@ -10,10 +10,12 @@ Atlas is a private, evidence-first company intelligence workspace. It connects c
 - Manual reviewed-evidence entry for constructing real relationships with a URL, publisher, date, and precise statement.
 - GDELT metadata discovery for a selected company. It stores headlines and publisher links as unverified reporting leads; it does not scrape article bodies.
 - Groq-compatible server-side synthesis with citation allow-listing, evidence-only fallback, rate-limit handling, and daily caps.
+- Durable AWS mode with separate SQS ingestion and analysis workers, dead-letter queues, DynamoDB checkpoints, S3 run manifests, and a disabled-by-default EventBridge schedule.
+- Deterministic evidence classes and source-routing tiers attached before model synthesis.
 - Private access-token gate for network deployment.
 - Explicit demo/live separation. Demo events and hypotheses are synthetic and labelled throughout the interface.
 
-This release does **not** claim complete news coverage, run background collection, prove user-entered evidence, or infer private thoughts. Planned source cards are honest placeholders rather than simulated integrations.
+This release does **not** claim complete news coverage, prove user-entered evidence, or infer private thoughts. Planned source cards are honest placeholders rather than simulated integrations. Scheduled collection starts only after its Terraform switch is enabled.
 
 ## Run locally
 
@@ -56,14 +58,16 @@ The API suite covers persistence, authentication, quotas, evidence validation, p
 - [Software design requirements](docs/SOFTWARE_DESIGN_REQUIREMENTS.md)
 - [Implementation mind map](docs/IMPLEMENTATION_MIND_MAP.md)
 - [Free and open-source ingestion plan](docs/OPEN_SOURCE_INGESTION_PLAN.md)
+- [Architecture upgrade and production topology](docs/ARCHITECTURE_UPGRADE.md)
 - [AWS deployment plan](docs/AWS_IMPLEMENTATION.md)
 
 ## Current architecture
 
 ```text
 React client ── FastAPI ── SQLite evidence graph
-                         ├─ GDELT metadata connector
-                         └─ Groq synthesis adapter
+                    ├──── SQS ingestion ── ingestion worker ── approved sources
+                    ├──── SQS analysis ─── analysis worker ─── Groq
+                    └──── DynamoDB checkpoints + private S3 manifests/backups
 ```
 
-SQLite is deliberate for a single-user pilot. The SDR defines the threshold and migration path to PostgreSQL, SQS, S3, and scheduled workers after the research workflow proves useful.
+SQLite is deliberate while all writers share one host. The SDR defines the measured threshold for PostgreSQL and horizontally scaled workers.

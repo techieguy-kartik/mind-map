@@ -76,7 +76,7 @@ mindmap
       SQS workers and DLQ
       S3 evidence and backups
       Secrets Manager
-      CloudWatch
+      S3 run manifests and local metrics
     Trust and safety
       Private authentication
       Tenant and secret isolation

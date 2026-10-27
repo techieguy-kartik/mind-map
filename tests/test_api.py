@@ -4,7 +4,7 @@ from datetime import datetime,timezone
 from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
-from server import db,research,sources
+from server import backup,cloud,db,evidence,research,sources,worker
 from server.app import app,login_attempts
 
 
@@ -15,6 +15,10 @@ def client(tmp_path,monkeypatch):
     monkeypatch.setenv('ATLAS_HOST','127.0.0.1')
     monkeypatch.delenv('ATLAS_ACCESS_TOKEN',raising=False)
     monkeypatch.delenv('GROQ_API_KEY',raising=False)
+    monkeypatch.delenv('ATLAS_INGESTION_QUEUE_URL',raising=False)
+    monkeypatch.delenv('ATLAS_ANALYSIS_QUEUE_URL',raising=False)
+    monkeypatch.delenv('ATLAS_CONTROL_TABLE',raising=False)
+    monkeypatch.delenv('ATLAS_EVIDENCE_BUCKET',raising=False)
     login_attempts.clear()
     with TestClient(app) as c:
         yield c
@@ -142,3 +146,43 @@ def test_empty_live_initialization(tmp_path,monkeypatch):
     db.initialize()
     assert len(db.records('entity'))==19
     assert db.records('event')==[] and db.records('edge')==[]
+
+
+def test_evidence_policy_is_explicit_and_bounded():
+    primary=evidence.envelope('primary_regulatory',retrieved_at='2026-01-01T00:00:00+00:00')
+    lead=evidence.envelope('reporting_lead',retrieved_at='2026-01-01T00:00:00+00:00')
+    assert primary['trust_tier'] < lead['trust_tier']
+    assert primary['source_prior'] > lead['source_prior']
+    with pytest.raises(ValueError):
+        evidence.envelope('invented')
+
+
+def test_durable_source_dispatch_is_visible(client,monkeypatch):
+    sent=[]
+    class SQS:
+        def send_message(self,**kwargs): sent.append(kwargs)
+    class AWS:
+        def client(self,*_args,**_kwargs): return SQS()
+    monkeypatch.setenv('ATLAS_INGESTION_QUEUE_URL','https://sqs.us-east-1.amazonaws.com/123/ingestion')
+    monkeypatch.setattr(cloud,'_boto3',lambda:AWS())
+    response=client.post('/api/sources/gdelt/sync',json={'entity_id':'tesla'})
+    assert response.status_code==200 and response.json()['status']=='Queued'
+    assert sent and json.loads(sent[0]['MessageBody'])['entity_id']=='tesla'
+    source=[s for s in client.get('/api/workspace').json()['sources'] if s['id']=='gdelt'][0]
+    assert source['status']=='Queued'
+
+
+def test_worker_rejects_wrong_queue_action(monkeypatch):
+    monkeypatch.setattr(cloud,'checkpoint',lambda *_args,**_kwargs:None)
+    with pytest.raises(ValueError):
+        worker.execute({'version':1,'job_id':'job-1','action':'run_investigation'},'ingestion')
+    with pytest.raises(ValueError):
+        worker.execute({'version':1,'job_id':'../../bad','action':'sync_watchlist'},'ingestion')
+
+
+def test_sqlite_backup_is_consistent(client,tmp_path):
+    destination=backup.create_backup(tmp_path/'backup.sqlite3')
+    import sqlite3
+    with sqlite3.connect(destination) as connection:
+        assert connection.execute("SELECT value FROM meta WHERE key='seed_version'").fetchone()[0]=='1'
+        assert connection.execute('PRAGMA integrity_check').fetchone()[0]=='ok'

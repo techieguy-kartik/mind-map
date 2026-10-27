@@ -123,7 +123,7 @@ Production evolution:
 - SQS plus a dead-letter queue when scheduled ingestion begins; all consumers remain idempotent because delivery can repeat.
 - S3 for permitted raw evidence and encrypted backups.
 - Secrets Manager for Groq and source credentials.
-- CloudWatch for queue age, connector health, analysis backlog, model usage, latency, errors, and budget alarms.
+- DynamoDB control records, SQS/DLQ inspection, local rotated container logs, the health API, and private S3 run manifests for queue state, connector health, analysis backlog, model usage, latency, errors, and spend.
 
 No Neptune, OpenSearch, Kubernetes, or Bedrock is required for the first 100 companies.
 

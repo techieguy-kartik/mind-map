@@ -61,7 +61,7 @@ test('source failure is visible without claiming successful collection',async({p
   await page.goto('/');await page.getByRole('button',{name:'Sources & coverage',exact:true}).click();
   await page.getByRole('button',{name:'Collect headlines'}).click();
   await expect(page.getByRole('status')).toContainText('Test source unavailable');
-  await expect(page.getByText('Automatic background collection')).toBeVisible();
+  await expect(page.getByText('Durable ingestion')).toBeVisible();
 });
 
 test('mobile navigation and layout fit the viewport',async({page})=>{

@@ -65,7 +65,7 @@ Each record carries `source_id`, original URL, upstream item ID, author/account,
 
 ## AWS execution path
 
-EventBridge Scheduler starts one connector job per source partition. SQS provides retries and a dead-letter queue. ECS/Fargate workers are preferable once scheduled collection begins; the current EC2 host can run the pilot workers. Connector secrets live in Secrets Manager, raw permitted objects in S3, normalized records in PostgreSQL, and CloudWatch/OpenTelemetry expose freshness, queue age, errors and spend. Groq receives only bounded evidence selected for extraction or synthesis.
+EventBridge Scheduler starts one connector job per source partition. SQS provides retries and a dead-letter queue. The current EC2 host runs separate ingestion and analysis containers; ECS/Fargate remains an option only when load requires horizontal scaling. Connector secrets live in Secrets Manager, permitted evidence and run manifests in S3, and DynamoDB checkpoints plus local rotated logs expose freshness, queue state and errors without a CloudWatch dependency. Groq receives only bounded evidence selected for extraction or synthesis.
 
 ## Access references
 

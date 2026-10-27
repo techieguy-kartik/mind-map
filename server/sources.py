@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 import httpx
-from . import db
+from . import db, evidence as evidence_policy
 
 CATALOG=[
     dict(id='gdelt',name='GDELT discovery',type='Global news metadata',access='Free public API',status='Ready',description='Fetches up to 75 news leads for a selected company. Titles and publisher links only; no article scraping.',url='https://gdeltproject.org/data.html',can_sync=True),
@@ -59,7 +59,8 @@ def sync(entity_id):
             except (ValueError,TypeError):
                 published=started
             publisher=urlparse(url).hostname
-            record=dict(id=id,entity_id=entity_id,title=title[:500],event_type='News lead',priority='Unranked',summary='Discovered headline only. Open the publisher source to verify context. This record has not been corroborated or interpreted as a confirmed company action.',entities=[entity_id],published_at=published,observed_at=started,source_id='gdelt',source_name=publisher,source_url=url,status='Reported',demo=False,evidence=[dict(id=id+'-headline',text=title[:500],url=url,publisher=publisher,kind='headline')])
+            provenance=evidence_policy.envelope('reporting_lead',retrieved_at=started)
+            record=dict(id=id,entity_id=entity_id,title=title[:500],event_type='News lead',priority='Unranked',summary='Discovered headline only. Open the publisher source to verify context. This record has not been corroborated or interpreted as a confirmed company action.',entities=[entity_id],published_at=published,observed_at=started,source_id='gdelt',source_name=publisher,source_url=url,status='Reported',demo=False,evidence=[dict(id=id+'-headline',text=title[:500],url=url,publisher=publisher,kind='headline',**provenance)])
             db.put('event',record)
             inserted+=1
         state.update(status='Healthy',last_success=started,inserted=inserted,error=None)

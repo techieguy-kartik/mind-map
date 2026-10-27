@@ -4,3 +4,6 @@ existing_instance_id            = "i-0c04d5f1a37d29ae0"
 existing_instance_role_name     = "nero-lab-ec2-role"
 repository_url                  = "https://github.com/techieguy-kartik/mind-map.git"
 backup_retention_days           = 90
+raw_evidence_retention_days     = 365
+ingestion_schedule_enabled      = false
+ingestion_schedule_expression   = "rate(30 minutes)"

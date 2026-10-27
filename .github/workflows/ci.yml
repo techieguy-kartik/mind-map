@@ -3,6 +3,24 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.0
+      - run: terraform fmt -check -recursive
+        working-directory: infra/terraform
+      - run: terraform init -backend=false -input=false
+        working-directory: infra/terraform
+      - run: terraform validate
+        working-directory: infra/terraform
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --tag atlas-intelligence:ci .
   verify:
     runs-on: ubuntu-latest
     steps:

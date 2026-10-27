@@ -12,7 +12,7 @@ def run(job):
         entity=db.get('entity',job['entity_id'])
         events=[e for e in db.records('event') if job['entity_id'] in e['entities'] and bool(e['demo']) == job['demo']]
         events=sorted(events,key=lambda e:e['published_at'],reverse=True)[:12]
-        evidence=[{'id':e['id'],'title':e['title'],'summary':e['summary'],'url':e['source_url'],'published_at':e['published_at'],'demo':e['demo']} for e in events]
+        evidence=[{'id':e['id'],'title':e['title'],'summary':e['summary'],'url':e['source_url'],'published_at':e['published_at'],'demo':e['demo'],'evidence_class':(e.get('evidence') or [{}])[0].get('evidence_class','synthetic' if e['demo'] else 'unclassified'),'trust_tier':(e.get('evidence') or [{}])[0].get('trust_tier')} for e in events]
         job['evidence']=evidence
         if not evidence:
             job.update(status='completed',mode='evidence-only',result='Insufficient evidence. No matching collected events are available for this company in the selected dataset. Collect sources or choose the demonstration dataset. No strategic conclusion can be supported.',citations=[])

@@ -7,9 +7,13 @@ Atlas owns:
 - private ECR repository and retention policy;
 - encrypted, versioned S3 backup bucket;
 - Secrets Manager secret metadata (secret values are inserted out of band and never enter Terraform state);
-- CloudWatch application log group;
-- least-privilege instance-role policy and SSM core attachment;
-- SSM build-and-deploy document.
+- encrypted ingestion and analysis queues with separate dead-letter queues;
+- an on-demand DynamoDB control/checkpoint table with point-in-time recovery;
+- a disabled-by-default EventBridge ingestion schedule;
+- least-privilege instance and scheduler roles;
+- SSM deployment and consistent-backup documents.
+
+CloudWatch is intentionally not used. Containers use size-limited local JSON logs, durable job state is kept in DynamoDB, failed work is visible in SQS dead-letter queues, and backups/run artifacts stay in private S3.
 
 Initialize and review:
 
@@ -21,6 +25,8 @@ terraform validate
 terraform plan -out=atlas.tfplan
 terraform apply atlas.tfplan
 ```
+
+The ingestion schedule defaults to disabled. Deploy and verify all three containers before setting `ingestion_schedule_enabled = true`.
 
 After apply, insert runtime secrets without printing them:
 

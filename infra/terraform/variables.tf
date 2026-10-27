@@ -44,3 +44,48 @@ variable "backup_retention_days" {
     error_message = "Backup retention must be at least 30 days."
   }
 }
+
+variable "raw_evidence_retention_days" {
+  description = "Days to retain raw permitted evidence and run manifests in S3."
+  type        = number
+  default     = 365
+
+  validation {
+    condition     = var.raw_evidence_retention_days >= 90
+    error_message = "Raw evidence retention must be at least 90 days."
+  }
+}
+
+variable "ingestion_schedule_expression" {
+  description = "EventBridge Scheduler expression for watchlist ingestion."
+  type        = string
+  default     = "rate(30 minutes)"
+}
+
+variable "ingestion_schedule_enabled" {
+  description = "Enable scheduled ingestion after the worker containers are deployed and healthy."
+  type        = bool
+  default     = false
+}
+
+variable "queue_message_retention_seconds" {
+  description = "How long SQS retains unprocessed jobs."
+  type        = number
+  default     = 345600
+
+  validation {
+    condition     = var.queue_message_retention_seconds >= 86400 && var.queue_message_retention_seconds <= 1209600
+    error_message = "Queue retention must be between 1 and 14 days."
+  }
+}
+
+variable "queue_visibility_timeout_seconds" {
+  description = "Worker lease for one SQS job."
+  type        = number
+  default     = 300
+
+  validation {
+    condition     = var.queue_visibility_timeout_seconds >= 60 && var.queue_visibility_timeout_seconds <= 43200
+    error_message = "Queue visibility timeout must be between 60 seconds and 12 hours."
+  }
+}

@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import db, research, sources
+from . import cloud, db, evidence as evidence_policy, research, sources
 
 load_dotenv()
 pool=ThreadPoolExecutor(max_workers=2)
@@ -34,7 +34,7 @@ async def lifespan(app):
     yield
 
 
-app=FastAPI(title='Atlas Intelligence',version='0.1.0',lifespan=lifespan)
+app=FastAPI(title='Atlas Intelligence',version='0.2.0',lifespan=lifespan)
 
 
 def session_valid(value,token):
@@ -91,7 +91,7 @@ def login(body:Login,request:Request,response:Response):
 
 @app.get('/api/health')
 def health():
-    return {'status':'ok','version':'0.1.0','authentication_required':bool(os.getenv('ATLAS_ACCESS_TOKEN'))}
+    return {'status':'ok','version':'0.2.0','authentication_required':bool(os.getenv('ATLAS_ACCESS_TOKEN')),'durable_ingestion':cloud.enabled('ingestion'),'durable_analysis':cloud.enabled('analysis')}
 
 
 @app.get('/api/workspace')
@@ -100,7 +100,7 @@ def workspace():
         watched=[r['entity_id'] for r in connection.execute('SELECT entity_id FROM watchlist')]
         row=connection.execute('SELECT investigations FROM usage WHERE day=?',(datetime.now(timezone.utc).date().isoformat(),)).fetchone()
     runs={r['id']:r for r in db.records('source_run')}
-    return {'entities':db.records('entity'),'events':db.records('event'),'edges':db.records('edge'),'hypotheses':db.records('hypothesis'),'watchlist':watched,'investigations':db.jobs(),'sources':[{**s,**runs.get(s['id'],{})} for s in sources.CATALOG],'settings':{'groq_configured':bool(os.getenv('GROQ_API_KEY')),'model':os.getenv('GROQ_MODEL','openai/gpt-oss-20b'),'daily_limit':int(os.getenv('ATLAS_DAILY_INVESTIGATIONS','10')),'used_today':row['investigations'] if row else 0,'storage':'SQLite pilot','paid_sources':False}}
+    return {'entities':db.records('entity'),'events':db.records('event'),'edges':db.records('edge'),'hypotheses':db.records('hypothesis'),'watchlist':watched,'investigations':db.jobs(),'sources':[{**s,**runs.get(s['id'],{})} for s in sources.CATALOG],'settings':{'groq_configured':bool(os.getenv('GROQ_API_KEY')),'model':os.getenv('GROQ_MODEL','openai/gpt-oss-20b'),'daily_limit':int(os.getenv('ATLAS_DAILY_INVESTIGATIONS','10')),'used_today':row['investigations'] if row else 0,'storage':'SQLite pilot with durable AWS control plane' if cloud.enabled('analysis') else 'SQLite pilot','paid_sources':False,'durable_ingestion':cloud.enabled('ingestion'),'durable_analysis':cloud.enabled('analysis')}}
 
 
 @app.get('/api/entities/{entity_id}')
@@ -145,7 +145,15 @@ def investigate(body:Investigation):
         connection.execute('UPDATE usage SET investigations=investigations+1 WHERE day=?',(day,))
         job=dict(id=str(uuid4()),created_at=now.isoformat(),entity_id=body.entity_id,question=body.question,demo=body.demo,status='queued',evidence=[])
         connection.execute('INSERT INTO investigations VALUES(?,?,?)',(job['id'],job['created_at'],json.dumps(job)))
-    pool.submit(research.run,job.copy())
+    if cloud.enabled('analysis'):
+        try:
+            cloud.dispatch('analysis','run_investigation',job_id=job['id'],investigation_id=job['id'])
+        except Exception:
+            job.update(status='failed',error='Durable analysis dispatch failed; no work was silently dropped.')
+            db.save_job(job)
+            raise HTTPException(503,'Durable analysis dispatch failed')
+    else:
+        pool.submit(research.run,job.copy())
     return job
 
 
@@ -186,7 +194,7 @@ def add_evidence(body:ReviewedEvidence):
     observed=datetime.now(timezone.utc).isoformat()
     digest=hashlib.sha256(json.dumps(body.model_dump(),sort_keys=True).encode()).hexdigest()[:20]
     id='review-'+digest
-    evidence=[dict(id=id+'-evidence',text=body.statement,url=url,publisher=body.publisher,kind='user-reviewed')]
+    evidence=[dict(id=id+'-evidence',text=body.statement,url=url,publisher=body.publisher,kind='user-reviewed',**evidence_policy.envelope('user_reviewed',retrieved_at=observed))]
     event=dict(id=id,entity_id=a['id'],title=f"{a['name']} → {body.relation.replace('_',' ')} → {b['name']}",event_type='Reviewed relationship',priority='Unranked',summary=body.statement,entities=[a['id'],b['id']],published_at=effective.isoformat(),observed_at=observed,source_id='user-review',source_name=body.publisher,source_url=url,status='User-reviewed',demo=False,evidence=evidence)
     edge=dict(id=id+'-edge',source=a['id'],target=b['id'],relation=body.relation,event_id=id,evidence=evidence,observed_at=observed,effective_from=effective.isoformat(),status='User-reviewed',demo=False)
     with db.connect() as connection:
@@ -203,6 +211,14 @@ def sync(body:Sync):
         previous=db.get('source_run','gdelt')
         if previous and (datetime.now(timezone.utc)-datetime.fromisoformat(previous['last_attempt'])).total_seconds()<60:
             raise HTTPException(429,'Wait one minute between source requests')
+        if cloud.enabled('ingestion'):
+            try:
+                job_id=cloud.dispatch('ingestion','sync_entity',entity_id=body.entity_id)
+            except Exception:
+                raise HTTPException(503,'Durable ingestion dispatch failed')
+            state=dict(id='gdelt',status='Queued',last_attempt=datetime.now(timezone.utc).isoformat(),entity_id=body.entity_id,job_id=job_id)
+            db.put('source_run',state)
+            return state
         return sources.sync(body.entity_id)
     finally:
         sync_lock.release()
