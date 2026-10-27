@@ -12,7 +12,7 @@ The upgraded runtime uses three containers on the existing encrypted EC2 volume:
 
 1. The SSM document clones the pushed Git repository, builds one checked-in Docker image, and starts the API plus two worker containers on the existing EC2 host.
 2. Create a dedicated application directory and persistent encrypted EBS volume; do not reuse another project's database or queue.
-3. Put `GROQ_API_KEY` and a random 24+ character `ATLAS_ACCESS_TOKEN` in Secrets Manager or an owner-readable environment file outside Git.
+3. Put `GROQ_API_KEY` and a random 24+ character `ATLAS_ACCESS_TOKEN` in Secrets Manager. Containers receive only the secret ARN and fetch the JSON directly through the EC2 instance role during startup.
 4. Run the container on EC2 loopback and access it through an SSH tunnel. Add a dedicated HTTPS hostname later without replacing unrelated Nginx routes. Set `ATLAS_SECURE_COOKIE=true` when HTTPS is enabled and back up the data volume to the dedicated S3 bucket.
 5. Review SQS/DynamoDB usage and set an AWS account budget before enabling scheduled collection.
 

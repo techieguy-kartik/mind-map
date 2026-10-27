@@ -57,6 +57,7 @@ The routing prior orders review and retrieval. It is not a probability that a cl
 - DynamoDB records job state transitions and expires them after 90 days.
 - S3 stores compact run manifests with lifecycle expiration.
 - The health endpoint reports whether durable ingestion and analysis are configured.
+- API and worker containers fetch the runtime JSON directly from Secrets Manager through the EC2 IAM role; the deployment host does not persist secret values in its environment file.
 
 This avoids a continuous log-ingestion bill. The tradeoff is that long-term searchable application logs are unavailable; run manifests and evidence provenance remain the durable audit records.
 

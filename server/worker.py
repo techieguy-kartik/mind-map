@@ -10,6 +10,7 @@ import signal
 import time
 
 from . import cloud, db, research, sources
+from .runtime_config import load_runtime_secrets
 
 log = logging.getLogger('atlas.worker')
 running = True
@@ -103,6 +104,7 @@ def run(queue_kind: str, once: bool = False) -> None:
 
 
 def main() -> None:
+    load_runtime_secrets()
     parser = argparse.ArgumentParser()
     parser.add_argument('--queue', choices=('ingestion', 'analysis'), required=True)
     parser.add_argument('--once', action='store_true')

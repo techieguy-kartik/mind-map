@@ -202,17 +202,13 @@ resource "aws_ssm_document" "deploy" {
               command -v git >/dev/null || { apt-get update -y && apt-get install -y git; }
               command -v docker >/dev/null || { curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && sh /tmp/get-docker.sh; }
               command -v aws >/dev/null || { apt-get update -y && apt-get install -y awscli; }
-              command -v jq >/dev/null || { apt-get update -y && apt-get install -y jq; }
               systemctl enable --now docker
               install -d -m 0750 /opt/atlas /opt/atlas/data /etc/atlas
               rm -rf /opt/atlas/source.next
               git clone --depth 1 --branch '{{ GitRef }}' '{{ RepositoryUrl }}' /opt/atlas/source.next
               docker build --pull -t atlas-intelligence:current /opt/atlas/source.next
-              aws secretsmanager get-secret-value --region ${var.aws_region} --secret-id '${aws_secretsmanager_secret.runtime.arn}' --query SecretString --output text > /etc/atlas/runtime.json
-              chmod 0600 /etc/atlas/runtime.json
-              jq -er '.GROQ_API_KEY // "" | "GROQ_API_KEY=" + .' /etc/atlas/runtime.json > /etc/atlas/atlas.env
-              jq -er '.ATLAS_ACCESS_TOKEN | select(length >= 24) | "ATLAS_ACCESS_TOKEN=" + .' /etc/atlas/runtime.json >> /etc/atlas/atlas.env
               printf '%s\n' \
+                'ATLAS_RUNTIME_SECRET_ID=${aws_secretsmanager_secret.runtime.arn}' \
                 'ATLAS_SECURE_COOKIE=false' \
                 'ATLAS_DEMO=true' \
                 'ATLAS_DAILY_INVESTIGATIONS=10' \
@@ -220,7 +216,7 @@ resource "aws_ssm_document" "deploy" {
                 'ATLAS_INGESTION_QUEUE_URL=${aws_sqs_queue.ingestion.url}' \
                 'ATLAS_ANALYSIS_QUEUE_URL=${aws_sqs_queue.analysis.url}' \
                 'ATLAS_CONTROL_TABLE=${aws_dynamodb_table.control.name}' \
-                'ATLAS_EVIDENCE_BUCKET=${aws_s3_bucket.backups.id}' >> /etc/atlas/atlas.env
+                'ATLAS_EVIDENCE_BUCKET=${aws_s3_bucket.backups.id}' > /etc/atlas/atlas.env
               chmod 0600 /etc/atlas/atlas.env
               docker rm -f atlas-intelligence atlas-ingestion-worker atlas-analysis-worker >/dev/null 2>&1 || true
               docker run -d --name atlas-intelligence --restart unless-stopped \

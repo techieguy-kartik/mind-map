@@ -19,6 +19,7 @@ def client(tmp_path,monkeypatch):
     monkeypatch.delenv('ATLAS_ANALYSIS_QUEUE_URL',raising=False)
     monkeypatch.delenv('ATLAS_CONTROL_TABLE',raising=False)
     monkeypatch.delenv('ATLAS_EVIDENCE_BUCKET',raising=False)
+    monkeypatch.delenv('ATLAS_RUNTIME_SECRET_ID',raising=False)
     login_attempts.clear()
     with TestClient(app) as c:
         yield c

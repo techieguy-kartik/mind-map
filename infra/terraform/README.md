@@ -6,7 +6,7 @@ Atlas owns:
 
 - private ECR repository and retention policy;
 - encrypted, versioned S3 backup bucket;
-- Secrets Manager secret metadata (secret values are inserted out of band and never enter Terraform state);
+- Secrets Manager secret metadata (values are inserted out of band, never enter Terraform state, and are fetched directly by containers through the EC2 role);
 - encrypted ingestion and analysis queues with separate dead-letter queues;
 - an on-demand DynamoDB control/checkpoint table with point-in-time recovery;
 - a disabled-by-default EventBridge ingestion schedule;
@@ -27,6 +27,8 @@ terraform apply atlas.tfplan
 ```
 
 The ingestion schedule defaults to disabled. Deploy and verify all three containers before setting `ingestion_schedule_enabled = true`.
+
+The SSM deployment document passes only `ATLAS_RUNTIME_SECRET_ID` to the containers. The API and workers call `GetSecretValue` through the instance IAM role during startup; no credential is copied into `/etc/atlas`, Docker command arguments, or Terraform state.
 
 After apply, insert runtime secrets without printing them:
 

@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from . import cloud, db, evidence as evidence_policy, research, sources
+from .runtime_config import load_runtime_secrets
 
 load_dotenv()
 pool=ThreadPoolExecutor(max_workers=2)
@@ -26,6 +27,7 @@ login_attempts={}
 
 @asynccontextmanager
 async def lifespan(app):
+    load_runtime_secrets()
     token=os.getenv('ATLAS_ACCESS_TOKEN','')
     host=os.getenv('ATLAS_HOST','127.0.0.1')
     if (host not in ('127.0.0.1','localhost','::1') and len(token)<24) or (token and len(token)<24):
