@@ -55,6 +55,7 @@ The API suite covers persistence, authentication, quotas, evidence validation, p
 
 ## Documents
 
+- [Product audit and complete upgrade plan](docs/PRODUCT_UPGRADE_PLAN.md)
 - [Software design requirements](docs/SOFTWARE_DESIGN_REQUIREMENTS.md)
 - [Implementation mind map](docs/IMPLEMENTATION_MIND_MAP.md)
 - [Free and open-source ingestion plan](docs/OPEN_SOURCE_INGESTION_PLAN.md)

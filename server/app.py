@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from . import cloud, db, evidence as evidence_policy, research, sources
 from .runtime_config import load_runtime_secrets
+from .freshness import collection_status
 
 load_dotenv()
 pool=ThreadPoolExecutor(max_workers=2)
@@ -32,7 +33,7 @@ async def lifespan(app):
     host=os.getenv('ATLAS_HOST','127.0.0.1')
     if (host not in ('127.0.0.1','localhost','::1') and len(token)<24) or (token and len(token)<24):
         raise RuntimeError('Use an access token of at least 24 characters before exposing the service.')
-    db.initialize()
+    db.initialize(recover_jobs=not cloud.enabled('analysis'))
     yield
 
 
@@ -110,6 +111,12 @@ def entity(entity_id:str):
     value=db.get('entity',entity_id)
     if not value: raise HTTPException(404,'Entity not found')
     return value
+
+
+@app.get('/api/entities/{entity_id}/freshness')
+def entity_freshness(entity_id:str):
+    entity(entity_id)
+    return collection_status(entity_id)
 
 
 class Watch(BaseModel):

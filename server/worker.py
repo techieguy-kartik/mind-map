@@ -41,11 +41,15 @@ def execute(message: dict, queue_kind: str) -> dict:
     _checkpoint(job_id, 'running', action=action, queue=queue_kind)
     if action == 'sync_entity' and queue_kind == 'ingestion':
         result = sources.sync(message.get('entity_id', ''))
+        if result.get('status') != 'Healthy':
+            raise RuntimeError('Source collection failed; SQS must retry this message')
     elif action == 'sync_watchlist' and queue_kind == 'ingestion':
         results = []
         for entity_id in _watchlist():
             results.append(sources.sync(entity_id))
             time.sleep(float(os.getenv('ATLAS_SOURCE_DELAY_SECONDS', '1')))
+        if any(item.get('status') != 'Healthy' for item in results):
+            raise RuntimeError('Watchlist collection incomplete; SQS must retry this message')
         result = {'entities': len(results), 'inserted': sum(r.get('inserted', 0) for r in results)}
     elif action == 'run_investigation' and queue_kind == 'analysis':
         investigation_id = message.get('investigation_id', '')
@@ -54,7 +58,12 @@ def execute(message: dict, queue_kind: str) -> dict:
         if not row:
             raise ValueError('investigation no longer exists')
         job = json.loads(row['data'])
+        if job.get('status') == 'completed':
+            return {'investigation_id': investigation_id, 'status': 'already_completed'}
         research.run(job)
+        outcome=db.get_job(investigation_id) or {}
+        if outcome.get('status') in ('deferred','failed'):
+            raise RuntimeError('Analysis incomplete; SQS must retry or redrive this message')
         result = {'investigation_id': investigation_id}
     else:
         raise ValueError(f'action {action!r} is not valid for the {queue_kind} queue')

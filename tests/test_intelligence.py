@@ -95,3 +95,15 @@ def test_valid_groq_output_is_audited(intelligence_db, monkeypatch):
     assert saved["audit"]["citation_allowlist_passed"] is True
     assert saved["audit"]["cited_evidence_count"] == 1
     assert saved["trace"][-1]["node"] == "audit"
+
+
+def test_provider_exception_retains_persisted_retrieval(intelligence_db, monkeypatch):
+    import httpx
+    monkeypatch.setenv('GROQ_API_KEY','fake-test-key')
+    with patch('server.intelligence.workflow.httpx.Client') as client:
+        client.return_value.__enter__.return_value.post.side_effect=httpx.ConnectError('provider unavailable')
+        research.run(make_job('provider-failure'))
+    saved=db.get_job('provider-failure')
+    assert saved['status']=='failed'
+    assert saved['evidence']
+    assert saved['trace'][-1]['node']=='assess'

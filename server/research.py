@@ -38,8 +38,10 @@ def run(job):
                 job[key] = state[key]
         job["workflow_node"] = "complete"
     except (httpx.HTTPError, json.JSONDecodeError, ValueError, KeyError, IndexError, TypeError):
+        job.update(db.get_job(job['id']) or {})
         job.update(status="failed", error="The research provider response could not be validated. Evidence was retained; no conclusion was accepted.")
     except Exception:
+        job.update(db.get_job(job['id']) or {})
         job.update(status="failed", error="Investigation interrupted by an internal error. No conclusion was accepted.")
     job["finished_at"] = datetime.now(timezone.utc).isoformat()
     db.save_job(job)

@@ -31,7 +31,8 @@ def sync(entity_id):
     if not entity or entity['type']!='company':
         raise ValueError('Select a company')
     started=datetime.now(timezone.utc).isoformat()
-    state=dict(id='gdelt',status='Syncing',last_attempt=started,entity_id=entity_id)
+    previous=db.get('source_entity_run',f'gdelt:{entity_id}') or {}
+    state=dict(id='gdelt',status='Syncing',last_attempt=started,entity_id=entity_id,last_success=previous.get('last_success'))
     db.put('source_run',state)
     # Entity names come from the controlled registry, never arbitrary URLs or queries.
     query='"'+entity['name'].replace('"','')+'"'
@@ -46,7 +47,7 @@ def sync(entity_id):
             title=article.get('title')
             if not url or not isinstance(title,str) or not title.strip():
                 continue
-            aliases=entity['aliases']
+            aliases=list(dict.fromkeys([entity['name'],*(entity.get('aliases') or [])]))
             # Require a registry alias in the headline; query hits alone are too weak.
             if not any(re.search(r'(?<!\w)'+re.escape(a)+r'(?!\w)',title,re.I) for a in aliases):
                 continue
@@ -67,4 +68,5 @@ def sync(entity_id):
     except (httpx.HTTPError,ValueError,TypeError):
         state.update(status='Error',error='Source unavailable, rate limited, or returned an invalid response. No coverage is implied. Retry later.')
     db.put('source_run',state)
+    db.put('source_entity_run',{**state,'id':f'gdelt:{entity_id}'})
     return state

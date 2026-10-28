@@ -141,6 +141,14 @@ def test_input_validation_and_missing_job(client):
     assert client.get('/api/investigations/not-found').status_code==404
 
 
+def test_freshness_endpoint_validates_entity_and_does_not_invent_collection(client):
+    result=client.get('/api/entities/tesla/freshness')
+    assert result.status_code==200
+    assert result.json()['status']=='never_collected'
+    assert result.json()['last_success'] is None
+    assert client.get('/api/entities/unknown/freshness').status_code==404
+
+
 def test_empty_live_initialization(tmp_path,monkeypatch):
     monkeypatch.setenv('ATLAS_DB',str(tmp_path/'live.sqlite3'))
     monkeypatch.setenv('ATLAS_DEMO','false')
