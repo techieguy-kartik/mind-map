@@ -8,6 +8,8 @@ import os
 import re
 import signal
 import time
+import threading
+from contextlib import contextmanager
 
 from . import cloud, db, research, sources
 from .runtime_config import load_runtime_secrets
@@ -33,6 +35,33 @@ def _checkpoint(job_id: str, state: str, **details) -> None:
         log.warning('checkpoint write failed id=%s state=%s', job_id, state, exc_info=True)
 
 
+def _sync_with_budget(entity_id):
+    for attempt in range(4):
+        result=sources.sync(entity_id)
+        if result.get('status')!='Deferred' or attempt==3:
+            return result
+        time.sleep(min(120,max(1,result.get('retry_after_seconds',1)))+1)
+
+
+@contextmanager
+def renew_lease(client,url,receipt):
+    stop_renewal=threading.Event()
+    visibility=max(60,int(os.getenv('ATLAS_QUEUE_VISIBILITY_SECONDS','300')))
+    def heartbeat():
+        while not stop_renewal.wait(visibility/3):
+            try:
+                client.change_message_visibility(QueueUrl=url,ReceiptHandle=receipt,VisibilityTimeout=visibility)
+            except Exception:
+                log.warning('SQS lease renewal failed; job may be redelivered')
+    thread=threading.Thread(target=heartbeat,daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop_renewal.set()
+        thread.join(timeout=5)
+
+
 def execute(message: dict, queue_kind: str) -> dict:
     if message.get('version') != 1 or not isinstance(message.get('job_id'), str) or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',message['job_id']):
         raise ValueError('unsupported or missing message envelope')
@@ -40,13 +69,13 @@ def execute(message: dict, queue_kind: str) -> dict:
     job_id = message['job_id']
     _checkpoint(job_id, 'running', action=action, queue=queue_kind)
     if action == 'sync_entity' and queue_kind == 'ingestion':
-        result = sources.sync(message.get('entity_id', ''))
+        result = _sync_with_budget(message.get('entity_id', ''))
         if result.get('status') != 'Healthy':
             raise RuntimeError('Source collection failed; SQS must retry this message')
     elif action == 'sync_watchlist' and queue_kind == 'ingestion':
         results = []
         for entity_id in _watchlist():
-            results.append(sources.sync(entity_id))
+            results.append(_sync_with_budget(entity_id))
             time.sleep(float(os.getenv('ATLAS_SOURCE_DELAY_SECONDS', '1')))
         if any(item.get('status') != 'Healthy' for item in results):
             raise RuntimeError('Watchlist collection incomplete; SQS must retry this message')
@@ -94,7 +123,8 @@ def run(queue_kind: str, once: bool = False) -> None:
             try:
                 message = json.loads(envelope['Body'])
                 job_id = message.get('job_id', job_id)
-                result = execute(message, queue_kind)
+                with renew_lease(client,url,envelope['ReceiptHandle']):
+                    result = execute(message, queue_kind)
                 client.delete_message(QueueUrl=url, ReceiptHandle=envelope['ReceiptHandle'])
                 try:
                     cloud.write_run_manifest(job_id, 'completed', queue=queue_kind, result=result)

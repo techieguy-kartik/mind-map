@@ -93,7 +93,7 @@ Entities, roles, documents, claims, events, relationships and hypotheses need di
 
 Relationships carry source claim IDs, effective interval, observed interval, review state and supersession/retraction links. A source correction invalidates dependent hypotheses and raises a review task. Shared attendance creates an appearance claim, not a meeting claim.
 
-The requirement remains at least 100 candidates for each agreed sector. Current catalog generation is unfinished: `scripts/build_company_registry.py` has no completed dataset or DB migration. Finish imports and display an honest coverage matrix; never meet the count by relabeling adjacent firms as niche specialists. A portfolio can include adjacent suppliers only with the category explicitly shown. Financial eligibility is a separate, source-backed coverage count.
+The first delivered snapshot now contains 1,372 distinct source-linked candidates and 100 memberships per broad discovery portfolio, with an offline migration and coverage UI. See `IMPLEMENTED_UPGRADE.md` for delivery status. Niche specialization and financial qualification remain separate verification tasks; never imply that adjacent suppliers are niche specialists. A portfolio can include adjacent suppliers only with the category explicitly shown. Financial eligibility is a separate, source-backed coverage count.
 
 Registry acceptance: deduplicate by stable ID, preserve existing user records/watchlists, include company-name aliases, attach source and retrieval time, report gaps, support multi-sector memberships, and offer paginated server-side search. Generate a reproducible catalog artifact; do not make startup depend on a public SPARQL endpoint.
 
@@ -117,7 +117,7 @@ Use `output_pydantic` contracts with claim text, evidence IDs, source spans, ent
 
 CrewAI's documented production design recommends controlled flows, focused crews, structured output and guardrails. Groq support uses the LiteLLM integration. Validate package/Python 3.14 compatibility in an isolated worker image before changing the existing lockfile. See [production architecture](https://docs.crewai.com/en/concepts/production-architecture), [task contracts](https://docs.crewai.com/en/concepts/tasks), and [Groq integration](https://docs.crewai.com/en/concepts/llms).
 
-CrewAI is a planned adapter, not an installed or executing component in this delivery. Ship it only after comparison against the single-analyst baseline improves evaluated evidence support without unacceptable latency/cost.
+CrewAI is now implemented as an optional Python 3.13 worker adapter with a separate lockfile and real-framework deterministic tests. It is disabled by default. Wider rollout still requires comparison against the single-analyst baseline on evidence support, latency and cost.
 
 ## Ordered delivery backlog
 

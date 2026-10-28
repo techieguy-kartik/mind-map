@@ -7,13 +7,34 @@ test('overview, company filter, evidence navigation and export',async({page})=>{
   await expect(page.getByText('Companies are real; events, graph connections, and hypotheses are fictional examples.')).toBeVisible();
   await page.getByRole('button',{name:'Companies',exact:true}).click();
   await page.getByRole('textbox',{name:'Search workspace'}).fill('Reliance');
-  await expect(page.locator('.company-row')).toHaveCount(2);
+  await expect.poll(()=>page.locator('.company-row').count()).toBeGreaterThanOrEqual(2);
   await page.getByRole('button',{name:'RI Reliance Industries Reliance ecosystem'}).click();
   await expect(page.getByRole('dialog')).toContainText('Financial qualification');
   await page.keyboard.press('Escape');
   const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Export',exact:true}).click();
   expect((await downloadPromise).suggestedFilename()).toBe('atlas-evidence-export.json');
   expect(errors).toEqual([]);
+});
+
+test('registry sector coverage and pagination are usable',async({page})=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'Companies',exact:true}).click();
+  await page.getByRole('combobox',{name:'Sector filter'}).selectOption('AI & Machine Learning');
+  await expect(page.locator('.company-row')).toHaveCount(50);
+  await expect(page.locator('.registry-coverage')).toContainText('100 candidates');
+  await page.getByRole('button',{name:'Next',exact:true}).click();
+  await expect(page.getByText('Page 2',{exact:true})).toBeVisible();
+  await expect(page.locator('.company-row')).toHaveCount(50);
+});
+
+test('server changes update the browser through the live stream',async({page})=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'Companies',exact:true}).click();
+  await page.getByRole('textbox',{name:'Search workspace'}).fill('Tesla');
+  await page.request.put('/api/watchlist/tesla',{data:{watched:false}});
+  await expect(page.getByRole('button',{name:'Watch Tesla',exact:true})).toBeVisible({timeout:8000});
+  await page.request.put('/api/watchlist/tesla',{data:{watched:true}});
+  await expect(page.getByRole('button',{name:'Unwatch Tesla',exact:true})).toBeVisible({timeout:8000});
 });
 
 test('watchlist survives reload',async({page})=>{

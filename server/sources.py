@@ -1,6 +1,8 @@
 """Fixed-host, metadata-only discovery. Never fetch arbitrary user supplied URLs."""
 import hashlib
 import re
+import time
+import os
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 import httpx
@@ -27,6 +29,21 @@ def safe_url(value):
 
 
 def sync(entity_id):
+    if not db.get('entity',entity_id):
+        raise ValueError('Select a company')
+    now=time.time()
+    interval=max(1,int(os.getenv('ATLAS_SOURCE_MIN_INTERVAL_SECONDS','60')))
+    with db.connect() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        row=connection.execute("SELECT next_allowed FROM source_leases WHERE source='gdelt'").fetchone()
+        if row and row['next_allowed']>now:
+            return {'id':'gdelt','status':'Deferred','entity_id':entity_id,'retry_after_seconds':max(1,int(row['next_allowed']-now)),
+                    'error':'Shared source request budget is cooling down. Stored evidence remains available.'}
+        connection.execute("INSERT INTO source_leases VALUES('gdelt',?) ON CONFLICT(source) DO UPDATE SET next_allowed=excluded.next_allowed",(now+max(30,interval),))
+    return _collect(entity_id)
+
+
+def _collect(entity_id):
     entity=db.get('entity',entity_id)
     if not entity or entity['type']!='company':
         raise ValueError('Select a company')
@@ -52,7 +69,11 @@ def sync(entity_id):
             if not any(re.search(r'(?<!\w)'+re.escape(a)+r'(?!\w)',title,re.I) for a in aliases):
                 continue
             id='news-'+hashlib.sha256(url.encode()).hexdigest()[:20]
-            if db.get('event',id):
+            existing=db.get('event',id)
+            if existing:
+                if entity_id not in existing.get('entities',[]):
+                    existing['entities']=sorted(set(existing.get('entities',[])+[entity_id]))
+                    db.put('event',existing)
                 continue
             raw_date=article.get('seendate','')
             try:

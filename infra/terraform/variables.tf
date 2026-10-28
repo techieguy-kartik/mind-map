@@ -68,6 +68,12 @@ variable "ingestion_schedule_enabled" {
   default     = false
 }
 
+variable "crew_worker_enabled" {
+  description = "Build the isolated Python 3.13 CrewAI analysis worker and expose specialist mode."
+  type        = bool
+  default     = false
+}
+
 variable "queue_message_retention_seconds" {
   description = "How long SQS retains unprocessed jobs."
   type        = number

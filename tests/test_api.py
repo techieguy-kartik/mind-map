@@ -27,7 +27,7 @@ def client(tmp_path,monkeypatch):
 
 def test_seed_truth_and_idempotence(client):
     first=client.get('/api/workspace').json()
-    assert len(first['entities'])==22
+    assert len(first['entities'])>=22
     assert len(first['events'])==6
     assert all(e['demo'] and e['source_url'] is None for e in first['events'])
     assert all(e['qualification']=='Not yet verified' for e in first['entities'] if e['type']=='company')
@@ -123,7 +123,8 @@ def test_ingest_deduplicates_rejects_bad_urls_and_matches_alias(client):
             {'title':'Not the company requested','url':'https://example.org/other'},
         ]}
         assert sources.sync('tesla')['inserted']==1
-        assert sources.sync('tesla')['inserted']==0
+        assert sources.sync('tesla')['status']=='Deferred'
+        assert sources._collect('tesla')['inserted']==0
     events=[e for e in db.records('event') if not e['demo']]
     assert len(events)==1 and events[0]['status']=='Reported'
     assert events[0]['evidence'][0]['kind']=='headline'
@@ -149,11 +150,34 @@ def test_freshness_endpoint_validates_entity_and_does_not_invent_collection(clie
     assert client.get('/api/entities/unknown/freshness').status_code==404
 
 
+def test_company_search_and_pagination(client):
+    first=client.get('/api/companies',params={'limit':3}).json()
+    second=client.get('/api/companies',params={'offset':3,'limit':3}).json()
+    assert first['total']>=16 and len(first['items'])==3
+    assert not set(row['id'] for row in first['items']) & set(row['id'] for row in second['items'])
+    assert all(row['country']=='India' for row in client.get('/api/companies',params={'country':'India'}).json()['items'])
+    assert client.get('/api/companies?limit=500').status_code==422
+    assert 'sectors' in client.get('/api/registry/coverage').json()
+
+
+def test_save_analysis_as_draft_is_idempotent(client):
+    db.save_job({'id':'promote','created_at':'2026-10-29','status':'completed','mode':'groq-rag',
+                 'entity_id':'jio','question':'Possible AI infrastructure expansion?',
+                 'result':'Illustrative hypothesis only.','citations':['demo-1'],
+                 'alternatives':['Routine capacity work.'],'missing_evidence':['Primary disclosure.'],'demo':True})
+    first=client.post('/api/investigations/promote/hypothesis')
+    second=client.post('/api/investigations/promote/hypothesis')
+    assert first.status_code==201 and first.json()==second.json()
+    assert first.json()['status']=='Draft'
+    db.save_job({'id':'inventory','created_at':'2026-10-29','status':'completed','mode':'evidence-only'})
+    assert client.post('/api/investigations/inventory/hypothesis').status_code==422
+
+
 def test_empty_live_initialization(tmp_path,monkeypatch):
     monkeypatch.setenv('ATLAS_DB',str(tmp_path/'live.sqlite3'))
     monkeypatch.setenv('ATLAS_DEMO','false')
     db.initialize()
-    assert len(db.records('entity'))==19
+    assert len(db.records('entity'))>=19
     assert db.records('event')==[] and db.records('edge')==[]
 
 

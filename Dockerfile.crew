@@ -1,0 +1,9 @@
+FROM python:3.13-slim
+WORKDIR /app
+COPY requirements-crew.lock ./
+RUN pip install --no-cache-dir -r requirements-crew.lock
+COPY server server
+RUN useradd --create-home atlas && mkdir /app/var && chown atlas:atlas /app/var
+USER atlas
+ENV ATLAS_CREW_ENABLED=true OTEL_SDK_DISABLED=true CREWAI_TELEMETRY_DISABLED=true CREWAI_TRACING_ENABLED=false
+CMD ["python", "-m", "server.worker", "--queue", "analysis"]

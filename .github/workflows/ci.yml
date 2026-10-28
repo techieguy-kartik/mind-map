@@ -3,6 +3,20 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  crew:
+    runs-on: ubuntu-latest
+    env:
+      OTEL_SDK_DISABLED: 'true'
+      CREWAI_TELEMETRY_DISABLED: 'true'
+      CREWAI_TRACING_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -r requirements-crew.lock
+      - run: .venv/bin/python -m pytest tests/test_crew.py -q
   infrastructure:
     runs-on: ubuntu-latest
     steps:

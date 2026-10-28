@@ -1,4 +1,5 @@
 import hashlib
+import asyncio
 import hmac
 import json
 import os
@@ -12,13 +13,14 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request, Response, Query
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from . import cloud, db, evidence as evidence_policy, research, sources
 from .runtime_config import load_runtime_secrets
 from .freshness import collection_status
+from . import registry
 
 load_dotenv()
 pool=ThreadPoolExecutor(max_workers=2)
@@ -103,7 +105,7 @@ def workspace():
         watched=[r['entity_id'] for r in connection.execute('SELECT entity_id FROM watchlist')]
         row=connection.execute('SELECT investigations FROM usage WHERE day=?',(datetime.now(timezone.utc).date().isoformat(),)).fetchone()
     runs={r['id']:r for r in db.records('source_run')}
-    return {'entities':db.records('entity'),'events':db.records('event'),'edges':db.records('edge'),'hypotheses':db.records('hypothesis'),'watchlist':watched,'investigations':db.jobs(),'sources':[{**s,**runs.get(s['id'],{})} for s in sources.CATALOG],'settings':{'groq_configured':bool(os.getenv('GROQ_API_KEY')),'model':os.getenv('GROQ_MODEL','openai/gpt-oss-20b'),'daily_limit':int(os.getenv('ATLAS_DAILY_INVESTIGATIONS','10')),'used_today':row['investigations'] if row else 0,'storage':'SQLite pilot with durable AWS control plane' if cloud.enabled('analysis') else 'SQLite pilot','paid_sources':False,'durable_ingestion':cloud.enabled('ingestion'),'durable_analysis':cloud.enabled('analysis')}}
+    return {'entities':db.records('entity'),'events':db.records('event'),'edges':db.records('edge'),'hypotheses':db.records('hypothesis'),'watchlist':watched,'investigations':db.jobs(),'sources':[{**s,**runs.get(s['id'],{})} for s in sources.CATALOG],'settings':{'groq_configured':bool(os.getenv('GROQ_API_KEY')),'model':os.getenv('GROQ_MODEL','openai/gpt-oss-20b'),'daily_limit':int(os.getenv('ATLAS_DAILY_INVESTIGATIONS','10')),'used_today':row['investigations'] if row else 0,'storage':'SQLite pilot with durable AWS control plane' if cloud.enabled('analysis') else 'SQLite pilot','paid_sources':False,'crew_enabled':os.getenv('ATLAS_CREW_ENABLED','false').lower()=='true','durable_ingestion':cloud.enabled('ingestion'),'durable_analysis':cloud.enabled('analysis')}}
 
 
 @app.get('/api/entities/{entity_id}')
@@ -111,6 +113,42 @@ def entity(entity_id:str):
     value=db.get('entity',entity_id)
     if not value: raise HTTPException(404,'Entity not found')
     return value
+
+
+@app.get('/api/companies')
+def companies(q:str='',sector:str='',country:str='',offset:int=Query(0,ge=0),limit:int=Query(50,ge=1,le=200)):
+    rows=[row for row in db.records('entity') if row.get('type')=='company']
+    rows=[row for row in rows if (not sector or sector in row.get('sectors',[row['sector']]))
+          and (not country or row['country']==country)
+          and (not q or q.casefold() in ' '.join([row['name'],row['group'],*row.get('aliases',[])]).casefold())]
+    rows.sort(key=lambda row:(row['name'].casefold(),row['id']))
+    return {'items':rows[offset:offset+limit],'total':len(rows),'offset':offset,'limit':limit}
+
+
+@app.get('/api/registry/coverage')
+def registry_coverage():
+    return registry.coverage(db.records('entity'))
+
+
+@app.get('/api/updates')
+async def updates(request:Request):
+    try:
+        cursor=max(0,int(request.headers['last-event-id'])) if 'last-event-id' in request.headers else await asyncio.to_thread(db.change_cursor)
+    except ValueError:
+        raise HTTPException(422,'Invalid event cursor')
+    async def stream():
+        nonlocal cursor
+        # Always invalidate on connect to cover workspace-load/subscribe races.
+        yield 'event: invalidate\ndata: {}\n\n'
+        while not await request.is_disconnected():
+            rows=await asyncio.to_thread(db.changes_since,cursor)
+            if rows:
+                cursor=rows[-1]['seq']
+                yield f'id: {cursor}\nevent: invalidate\ndata: '+json.dumps({'changes':rows})+'\n\n'
+            else:
+                yield ': keepalive\n\n'
+            await asyncio.sleep(2)
+    return StreamingResponse(stream(),media_type='text/event-stream',headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
 
 
 @app.get('/api/entities/{entity_id}/freshness')
@@ -138,6 +176,9 @@ class Investigation(BaseModel):
     entity_id:str
     question:str=Field(min_length=8,max_length=1500)
     demo:bool=False
+    refresh_sources:bool=True
+    analysis_mode:Literal['standard','crew']='standard'
+    as_of:datetime|None=None
 
 
 @app.post('/api/investigations',status_code=202)
@@ -152,7 +193,10 @@ def investigate(body:Investigation):
         if count>=int(os.getenv('ATLAS_DAILY_INVESTIGATIONS','10')):
             raise HTTPException(429,'Daily investigation cap reached. It resets at 00:00 UTC.')
         connection.execute('UPDATE usage SET investigations=investigations+1 WHERE day=?',(day,))
-        job=dict(id=str(uuid4()),created_at=now.isoformat(),entity_id=body.entity_id,question=body.question,demo=body.demo,status='queued',evidence=[])
+        if body.analysis_mode=='crew' and os.getenv('ATLAS_CREW_ENABLED','false').lower()!='true':
+            raise HTTPException(422,'Crew analysis requires the optional CrewAI worker and ATLAS_CREW_ENABLED=true')
+        cutoff=body.as_of.replace(tzinfo=timezone.utc) if body.as_of and body.as_of.tzinfo is None else body.as_of
+        job=dict(id=str(uuid4()),created_at=now.isoformat(),entity_id=body.entity_id,question=body.question,demo=body.demo,refresh_sources=body.refresh_sources and cutoff is None,as_of=cutoff.isoformat() if cutoff else None,analysis_mode=body.analysis_mode,status='queued',evidence=[])
         connection.execute('INSERT INTO investigations VALUES(?,?,?)',(job['id'],job['created_at'],json.dumps(job)))
     if cloud.enabled('analysis'):
         try:
@@ -172,6 +216,24 @@ def investigation(id:str):
         row=connection.execute('SELECT data FROM investigations WHERE id=?',(id,)).fetchone()
     if not row: raise HTTPException(404,'Investigation not found')
     return json.loads(row['data'])
+
+
+@app.post('/api/investigations/{id}/hypothesis',status_code=201)
+def promote_hypothesis(id:str):
+    job=investigation(id)
+    if job.get('status')!='completed' or job.get('mode') not in ('groq-rag','groq-crew','groq'):
+        raise HTTPException(422,'Only a completed cited analysis can be saved as a draft hypothesis')
+    existing=db.get('hypothesis','investigation-'+id)
+    if existing:
+        return existing
+    row={'id':'investigation-'+id,'entity_id':job['entity_id'],'title':job['question'],
+         'status':'Draft','horizon':'Not established','summary':job['result'],
+         'supporting':job.get('citations',[]),'contradicting':job.get('missing_evidence',[]),
+         'alternatives':job.get('alternatives',[]),'next_checks':job.get('missing_evidence',[]),
+         'demo':job['demo'],'investigation_id':id,'created_at':datetime.now(timezone.utc).isoformat()}
+    with db.connect() as connection:
+        connection.execute('INSERT OR IGNORE INTO records VALUES(?,?,?)',('hypothesis',row['id'],json.dumps(row)))
+    return db.get('hypothesis',row['id'])
 
 
 class Sync(BaseModel):

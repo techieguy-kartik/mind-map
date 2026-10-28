@@ -107,3 +107,42 @@ def test_provider_exception_retains_persisted_retrieval(intelligence_db, monkeyp
     assert saved['status']=='failed'
     assert saved['evidence']
     assert saved['trace'][-1]['node']=='assess'
+
+
+def test_live_research_refreshes_before_retrieval(intelligence_db):
+    from server import sources
+    job={**make_job('fresh-research'),'demo':False,'refresh_sources':True}
+    def collect(entity_id):
+        db.put('source_entity_run',{'id':f'gdelt:{entity_id}','status':'Healthy','last_success':datetime.now(timezone.utc).isoformat()})
+        return {'status':'Healthy','inserted':0}
+    with patch.object(sources,'sync',side_effect=collect) as sync:
+        research.run(job)
+    saved=db.get_job(job['id'])
+    sync.assert_called_once_with('jio')
+    assert saved['freshness']['status']=='fresh'
+    assert saved['trace'][0]['node']=='acquire'
+    with patch.object(sources,'sync') as sync:
+        research.run({**job,'id':'cached-research'})
+        sync.assert_not_called()
+
+
+def test_failed_refresh_returns_stale_partial_inventory(intelligence_db):
+    job={**make_job('outage-research'),'demo':False,'refresh_sources':True}
+    with patch('server.sources.sync',return_value={'status':'Error','error':'unavailable'}):
+        research.run(job)
+    saved=db.get_job(job['id'])
+    assert saved['freshness']['status']=='never_collected'
+    assert saved['acquisition']['status']=='Error'
+    assert 'Insufficient evidence' in saved['result']
+
+
+def test_historical_cutoff_excludes_later_observations_and_new_graph_edges():
+    from server.intelligence.retrieval import retrieve
+    events=[{'id':'known','entities':['jio'],'title':'Earlier disclosure','summary':'AI capacity',
+             'published_at':'2026-01-01T00:00:00+00:00','observed_at':'2026-01-02T00:00:00+00:00','demo':False},
+            {'id':'late','entities':['jio'],'title':'Later learned disclosure','summary':'AI capacity',
+             'published_at':'2026-01-01T00:00:00+00:00','observed_at':'2026-06-01T00:00:00+00:00','demo':False}]
+    edges=[{'id':'new-edge','source':'jio','target':'other','demo':False,'observed_at':'2026-06-01T00:00:00+00:00'}]
+    results,graph=retrieve({'id':'jio','name':'Jio'},'AI capacity',['technology'],events,edges,demo=False,as_of='2026-02-01T00:00:00+00:00')
+    assert [row['id'] for row in results]==['known']
+    assert graph==[]

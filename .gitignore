@@ -4,6 +4,8 @@ dist/
 __pycache__/
 *.pyc
 .env
+.venv-crew/
+server/data/registry_fetch_cache.json
 .env.*
 !.env.example
 var/

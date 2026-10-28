@@ -28,6 +28,8 @@ terraform apply atlas.tfplan
 
 The ingestion schedule defaults to disabled. Deploy and verify all three containers before setting `ingestion_schedule_enabled = true`.
 
+Set `crew_worker_enabled = true` to build the optional Python 3.13 CrewAI analysis image and expose specialist analysis. The API and ingestion worker keep the standard image. Review [implemented upgrade](../../docs/IMPLEMENTED_UPGRADE.md) for dependency locks, local commands, source freshness and remaining coverage limits.
+
 The SSM deployment document passes only `ATLAS_RUNTIME_SECRET_ID` to the containers. The API and workers call `GetSecretValue` through the instance IAM role during startup; no credential is copied into `/etc/atlas`, Docker command arguments, or Terraform state.
 
 After apply, insert runtime secrets without printing them:

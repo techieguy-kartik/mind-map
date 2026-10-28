@@ -64,3 +64,21 @@ def test_worker_defers_failed_analysis_and_skips_completed_replay(storage):
         result=worker.execute(message,'analysis')
         assert result['status']=='already_completed'
         research.assert_not_called()
+
+
+def test_source_cooldown_is_shared_across_companies(storage):
+    with patch('server.sources._collect',return_value={'status':'Healthy'}) as collect:
+        assert sources.sync('tesla')['status']=='Healthy'
+        assert sources.sync('jio')['status']=='Deferred'
+        assert collect.call_count==1
+
+
+def test_one_article_can_link_multiple_named_companies_without_duplicate_events(storage):
+    with patch('server.sources.httpx.Client') as client:
+        client.return_value.__enter__.return_value.get.return_value.json.return_value={'articles':[
+            {'title':'Tesla and Jio Platforms illustrative test story','url':'https://example.org/multi-company'}
+        ]}
+        assert sources._collect('tesla')['inserted']==1
+        assert sources._collect('jio')['inserted']==0
+    matched=[row for row in db.records('event') if row.get('source_url')=='https://example.org/multi-company']
+    assert len(matched)==1 and set(matched[0]['entities'])=={'tesla','jio'}

@@ -207,8 +207,14 @@ resource "aws_ssm_document" "deploy" {
               rm -rf /opt/atlas/source.next
               git clone --depth 1 --branch '{{ GitRef }}' '{{ RepositoryUrl }}' /opt/atlas/source.next
               docker build --pull -t atlas-intelligence:current /opt/atlas/source.next
+              analysis_image=atlas-intelligence:current
+              if ${var.crew_worker_enabled}; then
+                docker build --pull -f /opt/atlas/source.next/Dockerfile.crew -t atlas-intelligence:crew /opt/atlas/source.next
+                analysis_image=atlas-intelligence:crew
+              fi
               printf '%s\n' \
                 'ATLAS_RUNTIME_SECRET_ID=${aws_secretsmanager_secret.runtime.arn}' \
+                'ATLAS_CREW_ENABLED=${var.crew_worker_enabled}' \
                 'ATLAS_SECURE_COOKIE=false' \
                 'ATLAS_DEMO=true' \
                 'ATLAS_DAILY_INVESTIGATIONS=10' \
@@ -219,6 +225,8 @@ resource "aws_ssm_document" "deploy" {
                 'ATLAS_EVIDENCE_BUCKET=${aws_s3_bucket.backups.id}' > /etc/atlas/atlas.env
               chmod 0600 /etc/atlas/atlas.env
               docker rm -f atlas-intelligence atlas-ingestion-worker atlas-analysis-worker >/dev/null 2>&1 || true
+              docker run --rm --user 0 --entrypoint chown \
+                -v /opt/atlas/data:/app/var atlas-intelligence:current -R atlas:atlas /app/var
               docker run -d --name atlas-intelligence --restart unless-stopped \
                 --env-file /etc/atlas/atlas.env \
                 -e ATLAS_HOST=0.0.0.0 -e ATLAS_PORT=8000 -e ATLAS_DB=/app/var/atlas.sqlite3 \
@@ -237,7 +245,7 @@ resource "aws_ssm_document" "deploy" {
                 -e ATLAS_DB=/app/var/atlas.sqlite3 \
                 -v /opt/atlas/data:/app/var \
                 --log-driver json-file --log-opt max-size=10m --log-opt max-file=5 \
-                atlas-intelligence:current python -m server.worker --queue analysis
+                "$analysis_image" python -m server.worker --queue analysis
               for attempt in $(seq 1 30); do
                 if curl -fsS http://127.0.0.1:8000/api/health >/dev/null; then exit 0; fi
                 sleep 2

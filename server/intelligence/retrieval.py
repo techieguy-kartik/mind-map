@@ -69,7 +69,30 @@ def graph_neighborhood(entity_id: str, edges: list[dict[str, Any]], *, demo: boo
     return result
 
 
-def retrieve(entity: dict[str, Any], question: str, routes: list[str], events: list[dict[str, Any]], edges: list[dict[str, Any]], *, demo: bool, candidate_limit: int = 60) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _timestamp(value):
+    parsed=datetime.fromisoformat(value.replace('Z','+00:00'))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _known_at(row, cutoff, *, edge=False):
+    try:
+        if _timestamp(row['observed_at'])>cutoff:
+            return False
+        effective=row.get('effective_from') if edge else row['published_at']
+        if effective and _timestamp(effective)>cutoff:
+            return False
+        if edge and row.get('effective_to') and _timestamp(row['effective_to'])<=cutoff:
+            return False
+        return True
+    except (KeyError,ValueError,TypeError,AttributeError):
+        return False
+
+
+def retrieve(entity: dict[str, Any], question: str, routes: list[str], events: list[dict[str, Any]], edges: list[dict[str, Any]], *, demo: bool, candidate_limit: int = 60, as_of: str | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if as_of:
+        cutoff=_timestamp(as_of)
+        events=[row for row in events if _known_at(row,cutoff)]
+        edges=[row for row in edges if _known_at(row,cutoff,edge=True)]
     neighborhood = graph_neighborhood(entity["id"], edges, demo=demo)
     related = {item["entity_id"]: item["hop"] for item in neighborhood}
     graph_event_ids = {item["event_id"] for item in neighborhood if item.get("event_id")}
@@ -91,7 +114,8 @@ def retrieve(entity: dict[str, Any], question: str, routes: list[str], events: l
         intent = len(route_terms & event_tokens) / max(1, min(5, len(route_terms)))
         provenance = _provenance(event)
         hop = 0 if direct else min(hop_values or [2])
-        score = (0.34 * lexical) + (0.22 if direct else 0.08 / max(1, hop)) + (0.18 * _age_score(event.get("published_at", ""))) + (0.16 * float(provenance["source_prior"])) + (0.10 * intent)
+        recency=_age_score(event.get('published_at','')) if not as_of else math.exp(-max(0,(cutoff-_timestamp(event['published_at'])).total_seconds()/86400)/180)
+        score = (0.34 * lexical) + (0.22 if direct else 0.08 / max(1, hop)) + (0.18 * recency) + (0.16 * float(provenance["source_prior"])) + (0.10 * intent)
         candidates.append({
             "id": event["id"], "title": event.get("title", ""), "summary": event.get("summary", ""),
             "url": event.get("source_url"), "published_at": event.get("published_at"), "observed_at": event.get("observed_at"),

@@ -20,6 +20,8 @@ class InvestigationState(TypedDict, total=False):
     draft: dict[str, Any]
     validation_passed: bool
     audit: dict[str, Any]
+    freshness: dict[str, Any]
+    acquisition: dict[str, Any]
     mode: str
     status: str
     result: str

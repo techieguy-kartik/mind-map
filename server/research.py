@@ -18,7 +18,7 @@ def _persist_stage(job: dict, node: str, update: dict) -> None:
     current["workflow_node"] = node
     current["workflow_updated_at"] = datetime.now(timezone.utc).isoformat()
     current["trace"] = (current.get("trace") or []) + (update.get("trace") or [])
-    for key in ("routes", "retrieval", "sufficiency", "audit", "evidence", "status", "mode", "result", "citations", "alternatives", "missing_evidence", "error"):
+    for key in ("freshness", "acquisition", "routes", "retrieval", "sufficiency", "audit", "evidence", "status", "mode", "result", "citations", "alternatives", "missing_evidence", "error"):
         if key in update:
             current[key] = update[key]
     db.save_job(current)
@@ -33,7 +33,7 @@ def run(job):
         if not entity:
             raise KeyError("unknown entity")
         state = run_workflow(job, entity, persist=_persist_stage)
-        for key in ("routes", "retrieval", "sufficiency", "audit", "evidence", "status", "mode", "result", "citations", "alternatives", "missing_evidence", "error", "trace"):
+        for key in ("freshness", "acquisition", "routes", "retrieval", "sufficiency", "audit", "evidence", "status", "mode", "result", "citations", "alternatives", "missing_evidence", "error", "trace"):
             if key in state:
                 job[key] = state[key]
         job["workflow_node"] = "complete"

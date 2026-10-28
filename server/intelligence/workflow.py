@@ -11,6 +11,8 @@ import httpx
 from langgraph.graph import END, START, StateGraph
 
 from .. import db
+from .. import sources
+from ..freshness import collection_status
 from .context import estimate_tokens, pack_context
 from .retrieval import diverse_rerank, retrieve
 from .router import route_question
@@ -51,13 +53,25 @@ def build_workflow(*, persist: Persist | None = None):
             persist(state.get("job", {}), node, update)
         return update
 
+    def acquire_node(state: InvestigationState) -> dict[str, Any]:
+        before=collection_status(state['entity']['id'])
+        outcome={'status':'Cached','reason':'Successful collection is within the freshness window'}
+        if before['status']!='fresh':
+            outcome=sources.sync(state['entity']['id'])
+        freshness=collection_status(state['entity']['id'])
+        return checkpoint(state,'acquire',{'freshness':freshness,'acquisition':outcome,
+            'trace':_trace('acquire',status=outcome['status'],freshness=freshness['status'])})
+
+    def start_route(state: InvestigationState) -> str:
+        return 'acquire' if state['job'].get('refresh_sources') and not state['demo'] and not state['job'].get('as_of') else 'route'
+
     def route_node(state: InvestigationState) -> dict[str, Any]:
         routes = route_question(state["question"])
         return checkpoint(state, "route", {"routes": routes, "trace": _trace("route", routes=routes)})
 
     def retrieve_node(state: InvestigationState) -> dict[str, Any]:
         candidates, graph_context = retrieve(
-            state["entity"], state["question"], state["routes"], db.records("event"), db.records("edge"), demo=state["demo"]
+            state["entity"], state["question"], state["routes"], db.records("event"), db.records("edge"), demo=state["demo"], as_of=state['job'].get('as_of')
         )
         selected = diverse_rerank(candidates)
         context, included = pack_context(selected)
@@ -87,7 +101,13 @@ def build_workflow(*, persist: Persist | None = None):
             "entity": state["entity"]["name"], "question": state["question"],
             "dataset": "synthetic demo" if state["demo"] else "collected reporting and reviewed evidence",
             "routes": state["routes"], "evidence": state["context"],
+            'freshness':state.get('freshness',{'status':'not_checked'}),
+            'as_of':state['job'].get('as_of'),
         }
+        if state['job'].get('analysis_mode')=='crew':
+            from .crew import analyze
+            answer=analyze(payload)
+            return checkpoint(state,'synthesize',{'draft':answer,'trace':_trace('synthesize',outcome='crew_drafted')})
         with httpx.Client(timeout=60) as client:
             response = client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -152,7 +172,7 @@ def build_workflow(*, persist: Persist | None = None):
             "warnings": (["The synthesis relies on reporting leads or synthetic records; primary corroboration is still missing."] if not primary_citations else []),
         }
         return checkpoint(state, "audit", {
-            "audit": audit, "status": "completed", "mode": "groq-rag", "result": draft["result"],
+            "audit": audit, "status": "completed", "mode": "groq-crew" if state['job'].get('analysis_mode')=='crew' else "groq-rag", "result": draft["result"],
             "citations": draft["citations"], "alternatives": draft["alternatives"][:8], "missing_evidence": draft["missing_evidence"][:8],
             "trace": _trace("audit", cited=len(cited_evidence), direct=direct_citations, primary_or_reviewed=primary_citations),
         })
@@ -173,6 +193,7 @@ def build_workflow(*, persist: Persist | None = None):
         return checkpoint(state, "finalize", {"trace": _trace("finalize", outcome=state.get("status", "failed"))})
 
     builder = StateGraph(InvestigationState)
+    builder.add_node('acquire',acquire_node)
     builder.add_node("route", route_node)
     builder.add_node("retrieve", retrieve_node)
     builder.add_node("assess", assess_node)
@@ -181,7 +202,8 @@ def build_workflow(*, persist: Persist | None = None):
     builder.add_node("audit", audit_node)
     builder.add_node("finalize_inventory", finalize_inventory_node)
     builder.add_node("finalize_provider_error", finalize_provider_error_node)
-    builder.add_edge(START, "route")
+    builder.add_conditional_edges(START,start_route,{'acquire':'acquire','route':'route'})
+    builder.add_edge('acquire','route')
     builder.add_edge("route", "retrieve")
     builder.add_edge("retrieve", "assess")
     builder.add_conditional_edges("assess", after_assess, {"synthesize": "synthesize", "finalize_inventory": "finalize_inventory"})

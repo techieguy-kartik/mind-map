@@ -14,6 +14,9 @@ Atlas is a private, evidence-first company intelligence workspace. It connects c
 - Deterministic evidence classes and source-routing tiers attached before model synthesis.
 - Private access-token gate for network deployment.
 - Explicit demo/live separation. Demo events and hypotheses are synthetic and labelled throughout the interface.
+- Offline migration of a 1,372-company sourced candidate catalog with 100 memberships per broad discovery portfolio; sector/country filters, pagination, provenance and coverage gaps.
+- Freshness-aware live investigations, optional historical cutoff, authenticated live UI updates, and saving cited analyses as draft strategy hypotheses.
+- Optional isolated Python 3.13 CrewAI analysis worker with capital, sector and skeptic tasks; standard analysis remains on Python 3.14.
 
 This release does **not** claim complete news coverage, prove user-entered evidence, or infer private thoughts. Planned source cards are honest placeholders rather than simulated integrations. Scheduled collection starts only after its Terraform switch is enabled.
 
@@ -55,6 +58,7 @@ The API suite covers persistence, authentication, quotas, evidence validation, p
 
 ## Documents
 
+- [Implemented upgrade and CrewAI deployment options](docs/IMPLEMENTED_UPGRADE.md)
 - [Product audit and complete upgrade plan](docs/PRODUCT_UPGRADE_PLAN.md)
 - [Software design requirements](docs/SOFTWARE_DESIGN_REQUIREMENTS.md)
 - [Implementation mind map](docs/IMPLEMENTATION_MIND_MAP.md)

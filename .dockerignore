@@ -2,6 +2,8 @@
 .env
 .env.*
 .venv
+.venv-crew
+server/data/registry_fetch_cache.json
 node_modules
 var
 test-results
