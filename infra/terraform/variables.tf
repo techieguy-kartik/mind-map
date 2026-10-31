@@ -59,7 +59,7 @@ variable "raw_evidence_retention_days" {
 variable "ingestion_schedule_expression" {
   description = "EventBridge Scheduler expression for watchlist ingestion."
   type        = string
-  default     = "rate(30 minutes)"
+  default     = "rate(5 minutes)"
 }
 
 variable "ingestion_schedule_enabled" {

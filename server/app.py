@@ -40,6 +40,8 @@ async def lifespan(app):
 
 
 app=FastAPI(title='Atlas Intelligence',version='0.2.0',lifespan=lifespan)
+from .features import router as feature_router,registry_entities
+app.include_router(feature_router)
 
 
 def session_valid(value,token):
@@ -105,7 +107,7 @@ def workspace():
         watched=[r['entity_id'] for r in connection.execute('SELECT entity_id FROM watchlist')]
         row=connection.execute('SELECT investigations FROM usage WHERE day=?',(datetime.now(timezone.utc).date().isoformat(),)).fetchone()
     runs={r['id']:r for r in db.records('source_run')}
-    return {'entities':db.records('entity'),'events':db.records('event'),'edges':db.records('edge'),'hypotheses':db.records('hypothesis'),'watchlist':watched,'investigations':db.jobs(),'sources':[{**s,**runs.get(s['id'],{})} for s in sources.CATALOG],'settings':{'groq_configured':bool(os.getenv('GROQ_API_KEY')),'model':os.getenv('GROQ_MODEL','openai/gpt-oss-20b'),'daily_limit':int(os.getenv('ATLAS_DAILY_INVESTIGATIONS','10')),'used_today':row['investigations'] if row else 0,'storage':'SQLite pilot with durable AWS control plane' if cloud.enabled('analysis') else 'SQLite pilot','paid_sources':False,'crew_enabled':os.getenv('ATLAS_CREW_ENABLED','false').lower()=='true','durable_ingestion':cloud.enabled('ingestion'),'durable_analysis':cloud.enabled('analysis')}}
+    return {'entities':registry_entities(),'events':db.records('event'),'edges':db.records('edge'),'hypotheses':db.records('hypothesis'),'watchlist':watched,'investigations':db.jobs(),'alerts':sorted(db.records('alert'),key=lambda item:item['created_at'],reverse=True)[:200],'sources':[{**s,**runs.get(s['id'],{})} for s in sources.CATALOG],'settings':{'groq_configured':bool(os.getenv('GROQ_API_KEY')),'model':os.getenv('GROQ_MODEL','openai/gpt-oss-20b'),'daily_limit':int(os.getenv('ATLAS_DAILY_INVESTIGATIONS','10')),'used_today':row['investigations'] if row else 0,'storage':'SQLite pilot with durable AWS control plane' if cloud.enabled('analysis') else 'SQLite pilot','paid_sources':False,'crew_enabled':os.getenv('ATLAS_CREW_ENABLED','false').lower()=='true','durable_ingestion':cloud.enabled('ingestion'),'durable_analysis':cloud.enabled('analysis')}}
 
 
 @app.get('/api/entities/{entity_id}')
@@ -117,7 +119,7 @@ def entity(entity_id:str):
 
 @app.get('/api/companies')
 def companies(q:str='',sector:str='',country:str='',offset:int=Query(0,ge=0),limit:int=Query(50,ge=1,le=200)):
-    rows=[row for row in db.records('entity') if row.get('type')=='company']
+    rows=[row for row in registry_entities() if row.get('type')=='company']
     rows=[row for row in rows if (not sector or sector in row.get('sectors',[row['sector']]))
           and (not country or row['country']==country)
           and (not q or q.casefold() in ' '.join([row['name'],row['group'],*row.get('aliases',[])]).casefold())]

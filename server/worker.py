@@ -11,7 +11,7 @@ import time
 import threading
 from contextlib import contextmanager
 
-from . import cloud, db, research, sources
+from . import cloud, db, research, sources,primary_sources
 from .runtime_config import load_runtime_secrets
 
 log = logging.getLogger('atlas.worker')
@@ -35,9 +35,9 @@ def _checkpoint(job_id: str, state: str, **details) -> None:
         log.warning('checkpoint write failed id=%s state=%s', job_id, state, exc_info=True)
 
 
-def _sync_with_budget(entity_id):
+def _sync_with_budget(entity_id,source_id='gdelt',feed='announcements'):
     for attempt in range(4):
-        result=sources.sync(entity_id)
+        result=sources.sync(entity_id) if source_id=='gdelt' else primary_sources.sync(entity_id,source_id,feed=feed)
         if result.get('status')!='Deferred' or attempt==3:
             return result
         time.sleep(min(120,max(1,result.get('retry_after_seconds',1)))+1)
@@ -69,17 +69,24 @@ def execute(message: dict, queue_kind: str) -> dict:
     job_id = message['job_id']
     _checkpoint(job_id, 'running', action=action, queue=queue_kind)
     if action == 'sync_entity' and queue_kind == 'ingestion':
-        result = _sync_with_budget(message.get('entity_id', ''))
+        result = _sync_with_budget(message.get('entity_id', ''),message.get('source_id','gdelt'),message.get('feed','announcements'))
         if result.get('status') != 'Healthy':
             raise RuntimeError('Source collection failed; SQS must retry this message')
     elif action == 'sync_watchlist' and queue_kind == 'ingestion':
-        results = []
+        from .freshness import collection_status
+        pending=[]
         for entity_id in _watchlist():
-            results.append(_sync_with_budget(entity_id))
-            time.sleep(float(os.getenv('ATLAS_SOURCE_DELAY_SECONDS', '1')))
-        if any(item.get('status') != 'Healthy' for item in results):
-            raise RuntimeError('Watchlist collection incomplete; SQS must retry this message')
-        result = {'entities': len(results), 'inserted': sum(r.get('inserted', 0) for r in results)}
+            rule=db.get('watch_rule',entity_id) or {'enabled':True,'priority':3,'interval_seconds':1800,'sources':['gdelt']}
+            if not rule['enabled']:continue
+            for source_id in rule['sources']:
+                age=collection_status(entity_id,source_id=source_id)['collection_age_seconds']
+                if age is None or age>=rule['interval_seconds']:
+                    pending.append((rule['priority'],entity_id,source_id,age))
+        limit=max(1,min(1000,int(os.getenv('ATLAS_SCHEDULE_BATCH_SIZE','100'))))
+        selected=sorted(pending,key=lambda item:(-item[0],-(item[3] if item[3] is not None else float('inf')),item[1],item[2]))[:limit]
+        for _,entity_id,source_id,_ in selected:
+            cloud.dispatch('ingestion','sync_entity',entity_id=entity_id,source_id=source_id)
+        result={'queued':len(selected),'entities':len({item[1] for item in selected}),'due':len(pending),'remaining':len(pending)-len(selected)}
     elif action == 'run_investigation' and queue_kind == 'analysis':
         investigation_id = message.get('investigation_id', '')
         with db.connect() as connection:

@@ -16,7 +16,7 @@ jobs:
           python-version: '3.13'
       - run: python -m venv .venv
       - run: .venv/bin/pip install -r requirements-crew.lock
-      - run: .venv/bin/python -m pytest tests/test_crew.py -q
+      - run: .venv/bin/python -m pytest -q
   infrastructure:
     runs-on: ubuntu-latest
     steps:

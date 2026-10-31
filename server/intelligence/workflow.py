@@ -11,7 +11,7 @@ import httpx
 from langgraph.graph import END, START, StateGraph
 
 from .. import db
-from .. import sources
+from .. import sources, primary_sources
 from ..freshness import collection_status
 from .context import estimate_tokens, pack_context
 from .retrieval import diverse_rerank, retrieve
@@ -47,18 +47,35 @@ def _inventory_result(entity: dict[str, Any], demo: bool, evidence: list[dict[st
     return f"Evidence inventory for {entity['name']}: {len(evidence)} ranked records. {label} {reason} Review cited records, confirm legal entities and deal status, and seek primary disclosures before drawing a strategic conclusion."
 
 
-def build_workflow(*, persist: Persist | None = None):
+def build_workflow(*, persist: Persist | None = None,checkpointer=None):
     def checkpoint(state: InvestigationState, node: str, update: dict[str, Any]) -> dict[str, Any]:
         if persist:
             persist(state.get("job", {}), node, update)
         return update
 
     def acquire_node(state: InvestigationState) -> dict[str, Any]:
-        before=collection_status(state['entity']['id'])
-        outcome={'status':'Cached','reason':'Successful collection is within the freshness window'}
-        if before['status']!='fresh':
-            outcome=sources.sync(state['entity']['id'])
-        freshness=collection_status(state['entity']['id'])
+        entity_id=state['entity']['id']
+        rule=db.get('watch_rule',entity_id) or {}
+        selected=rule.get('sources',['gdelt'])
+        outcomes=[]
+        checks=[]
+        for source_id in selected:
+            before=collection_status(entity_id,source_id=source_id)
+            result={'status':'Cached','reason':'Successful collection is within the freshness window'}
+            if before['status']!='fresh':
+                result=sources.sync(entity_id) if source_id=='gdelt' else primary_sources.sync(entity_id,source_id)
+            outcomes.append({**result,'source_id':source_id})
+            checks.append(collection_status(entity_id,source_id=source_id))
+        if len(checks)==1:
+            freshness=checks[0]
+            outcome=outcomes[0]
+        else:
+            freshness={'entity_id':entity_id,'status':'fresh' if all(item['status']=='fresh' for item in checks) else 'partial',
+                'last_success':None,'sources':checks,
+                'meaning':'Per-source collection checks, not a guarantee of complete coverage or publisher latency.'}
+            statuses={item['status'] for item in outcomes}
+            outcome={'status':'Error' if 'Error' in statuses else ('Deferred' if 'Deferred' in statuses else ('Cached' if statuses=={'Cached'} else 'Healthy')),
+                'sources':outcomes}
         return checkpoint(state,'acquire',{'freshness':freshness,'acquisition':outcome,
             'trace':_trace('acquire',status=outcome['status'],freshness=freshness['status'])})
 
@@ -70,8 +87,11 @@ def build_workflow(*, persist: Persist | None = None):
         return checkpoint(state, "route", {"routes": routes, "trace": _trace("route", routes=routes)})
 
     def retrieve_node(state: InvestigationState) -> dict[str, Any]:
+        cutoff=state['job'].get('as_of')
+        events=db.records_at('event',cutoff) if cutoff else db.records('event')
+        edges=db.records_at('edge',cutoff) if cutoff else db.records('edge')
         candidates, graph_context = retrieve(
-            state["entity"], state["question"], state["routes"], db.records("event"), db.records("edge"), demo=state["demo"], as_of=state['job'].get('as_of')
+            state["entity"], state["question"], state["routes"], events, edges, demo=state["demo"], as_of=cutoff
         )
         selected = diverse_rerank(candidates)
         context, included = pack_context(selected)
@@ -149,6 +169,8 @@ def build_workflow(*, persist: Persist | None = None):
             and isinstance(alternatives, list) and bool(alternatives) and all(isinstance(item, str) and item.strip() for item in alternatives)
             and isinstance(missing, list) and bool(missing) and all(isinstance(item, str) and item.strip() for item in missing)
         )
+        if valid and not state['job'].get('as_of'):
+            valid=all((db.get('event',cite) or {}).get('status') not in ('Disputed','Retracted') for cite in citations)
         update: dict[str, Any] = {"trace": _trace("validate", accepted=valid)}
         update["validation_passed"] = valid
         if not valid:
@@ -212,10 +234,27 @@ def build_workflow(*, persist: Persist | None = None):
     builder.add_edge("audit", END)
     builder.add_edge("finalize_inventory", END)
     builder.add_edge("finalize_provider_error", END)
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)
 
 
 def run_workflow(job: dict[str, Any], entity: dict[str, Any], *, persist: Persist | None = None) -> InvestigationState:
-    return build_workflow(persist=persist).invoke({
-        "job": job, "entity": entity, "question": job["question"], "demo": bool(job["demo"]), "trace": [],
-    })
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    with SqliteSaver.from_conn_string(os.getenv('ATLAS_DB','var/atlas.sqlite3')) as saver:
+        graph=build_workflow(persist=persist,checkpointer=saver)
+        attempt=int(job.get('workflow_attempt',0))
+        config={'configurable':{'thread_id':f"{job['id']}:{attempt}"}}
+        snapshot=graph.get_state(config)
+        resume=bool(snapshot.next)
+        withdrawn=resume and not job.get('as_of') and any(
+            (db.get('event',item['id']) or {}).get('status') in ('Disputed','Retracted')
+            for item in snapshot.values.get('evidence',[]))
+        if snapshot.values and (not resume or withdrawn):
+            attempt+=1
+            config={'configurable':{'thread_id':f"{job['id']}:{attempt}"}}
+            resume=False
+        job['workflow_attempt']=attempt
+        job['workflow_thread']=config['configurable']['thread_id']
+        db.save_job(job)
+        return graph.invoke(None if resume else {
+            'job':job,'entity':entity,'question':job['question'],'demo':bool(job['demo']),'trace':[],
+        },config)

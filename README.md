@@ -17,6 +17,9 @@ Atlas is a private, evidence-first company intelligence workspace. It connects c
 - Offline migration of a 1,372-company sourced candidate catalog with 100 memberships per broad discovery portfolio; sector/country filters, pagination, provenance and coverage gaps.
 - Freshness-aware live investigations, optional historical cutoff, authenticated live UI updates, and saving cited analyses as draft strategy hypotheses.
 - Optional isolated Python 3.13 CrewAI analysis worker with capital, sector and skeptic tasks; standard analysis remains on Python 3.14.
+- Official SEC submissions/annual-profit facts and five NSE disclosure feeds, with reviewed issuer mappings and source-specific collection status.
+- Sourced financial qualification above USD 500M, public-profile entry, configurable monitoring rules, and deduplicated in-app materiality alerts.
+- Versioned corrections that flag relationships and hypotheses, withdraw alerts and update qualification; interrupted LangGraph investigations resume from durable SQLite checkpoints.
 
 This release does **not** claim complete news coverage, prove user-entered evidence, or infer private thoughts. Planned source cards are honest placeholders rather than simulated integrations. Scheduled collection starts only after its Terraform switch is enabled.
 
@@ -25,17 +28,20 @@ This release does **not** claim complete news coverage, prove user-entered evide
 Requirements: Node 20+, Python 3.14+, npm.
 
 ```bash
+cd /Users/apple/Downloads/strategy-mapping
 cp .env.example .env
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.lock
 npm ci
 npm run build
+export AWS_PROFILE=account2 AWS_REGION=us-east-1
+export ATLAS_RUNTIME_SECRET_ID=/atlas/production/runtime
 ./scripts/start.sh
 ```
 
-Open `http://127.0.0.1:8000`. Add `GROQ_API_KEY` to `.env` to enable AI synthesis. Without it, investigations return an honest evidence inventory.
+Open `http://127.0.0.1:8000`. Keep `.env` for non-secret settings. The startup process loads `GROQ_API_KEY`, `ATLAS_ACCESS_TOKEN` and optional `SEC_USER_AGENT` directly from AWS Secrets Manager using your selected AWS profile. Do not copy their values into source files. Without a configured secret or model credential, investigations return an evidence inventory.
 
-For private network access, set `ATLAS_HOST=0.0.0.0` and a random `ATLAS_ACCESS_TOKEN` of at least 24 characters. Terminate HTTPS at a reverse proxy and set `ATLAS_SECURE_COOKIE=true`.
+For private network access, set `ATLAS_HOST=0.0.0.0` and store a random `ATLAS_ACCESS_TOKEN` of at least 24 characters in the runtime secret. Terminate HTTPS at a reverse proxy and set `ATLAS_SECURE_COOKIE=true`.
 
 ## Docker
 
@@ -45,6 +51,7 @@ docker compose up --build
 ```
 
 The default port mapping binds only to loopback. Put the service behind authenticated HTTPS before making it remotely reachable.
+Set the non-secret runtime secret identifier and region in `.env`; the container also needs AWS IAM credentials (the EC2 instance role in AWS). The local Compose file does not automatically mount your host AWS profile.
 
 ## Verification
 

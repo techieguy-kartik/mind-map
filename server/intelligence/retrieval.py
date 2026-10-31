@@ -44,6 +44,8 @@ def _provenance(event: dict[str, Any]) -> dict[str, Any]:
 def graph_neighborhood(entity_id: str, edges: list[dict[str, Any]], *, demo: bool, max_hops: int = 2, max_nodes: int = 100) -> list[dict[str, Any]]:
     adjacency: dict[str, list[tuple[str, dict[str, Any]]]] = defaultdict(list)
     for edge in edges:
+        if edge.get('status') in ('Disputed','Retracted'):
+            continue
         if bool(edge.get("demo")) != demo:
             continue
         source, target = edge.get("source"), edge.get("target")
@@ -100,6 +102,8 @@ def retrieve(entity: dict[str, Any], question: str, routes: list[str], events: l
     route_terms = set().union(*(ROUTE_TERMS.get(route, set()) for route in routes))
     candidates: list[dict[str, Any]] = []
     for event in events:
+        if event.get('status') in ('Disputed','Retracted'):
+            continue
         if bool(event.get("demo")) != demo:
             continue
         event_entities = set(event.get("entities") or [])

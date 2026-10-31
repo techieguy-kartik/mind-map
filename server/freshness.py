@@ -5,9 +5,9 @@ import os
 from . import db
 
 
-def collection_status(entity_id, *, now=None):
+def collection_status(entity_id, *, now=None,source_id='gdelt'):
     now = now or datetime.now(timezone.utc)
-    state = db.get('source_entity_run', f'gdelt:{entity_id}') or {}
+    state = db.get('source_entity_run', f'{source_id}:{entity_id}') or {}
     threshold = max(60, int(os.getenv('ATLAS_FRESHNESS_SECONDS', '1800')))
     age = None
     try:
@@ -21,7 +21,7 @@ def collection_status(entity_id, *, now=None):
     if state.get('status') == 'Error':
         status = 'error'
     return {
-        'entity_id': entity_id, 'source_id': 'gdelt', 'status': status,
+        'entity_id': entity_id, 'source_id': source_id, 'status': status,
         'last_attempt': state.get('last_attempt'), 'last_success': state.get('last_success'),
         'collection_age_seconds': age, 'freshness_threshold_seconds': threshold,
         'last_error': state.get('error'),

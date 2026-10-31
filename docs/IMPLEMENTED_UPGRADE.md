@@ -1,6 +1,6 @@
 # Implemented registry and live-research upgrade
 
-Delivered 29 October 2026. This document describes executing code and its limits.
+Updated 31 October 2026. This document describes executing code and its limits. The canonical checkout is `/Users/apple/Downloads/strategy-mapping`, with remote `https://github.com/techieguy-kartik/mind-map.git`. The separate research-agent project is a reference only.
 
 ## Registry
 
@@ -20,11 +20,11 @@ Frontend: Companies now has sector and country filters, 50-row pages, provenance
 
 ## Latest reporting and historical research
 
-New live investigations default to `refresh_sources=true`. LangGraph checks the selected company's collection age before retrieval. A fresh collection uses the cache; stale or unknown collection invokes the fixed-host news adapter. A shared SQLite cooldown coordinates API and workers. A source outage or cooldown is retained in `acquisition`; the answer can use stored evidence and the dossier shows the achieved freshness.
+New live investigations default to `refresh_sources=true`. LangGraph checks the selected company's collection age for each source in its monitoring rule (GDELT by default). Fresh collections use the cache; stale or unknown collections invoke the corresponding fixed-host adapter. Shared SQLite cooldowns coordinate API and workers. Outages and cooldowns remain visible in `acquisition`, with per-source freshness and partial coverage.
 
-The freshness timestamp means a successful collection check of the connected source, not complete coverage or guaranteed real-time publication. GDELT remains the only automated news connector in this delivery. Demo investigations do not request live data.
+The freshness timestamp means a successful collection check, not complete coverage or guaranteed real-time publication. GDELT discovers news; SEC and NSE adapters collect official records. Demo investigations do not request live data.
 
-An optional `as_of` timestamp filters both publication/effective time and observation time before retrieval and graph expansion. It disables refresh for the historical question. This prevents newly learned records from leaking into a historical answer, but is not a full bitemporal correction store; versioned corrections remain future work.
+An optional `as_of` timestamp filters publication/effective and observation times before retrieval and graph expansion. It disables refresh. SQLite triggers retain versions of events, relationships, hypotheses and financial observations; historical retrieval selects the latest version known at the cutoff. This preserves pre-correction records. Migration backfills the currently available version; it cannot recover revisions before this upgrade. This is a pilot version store, not a complete claim-level bitemporal model.
 
 API example:
 
@@ -38,6 +38,28 @@ API example:
   "as_of": null
 }
 ```
+
+## Primary disclosures and financial qualification
+
+`server/primary_sources.py` implements fixed-host [SEC submissions and companyfacts](https://www.sec.gov/search-filings/edgar-application-programming-interfaces) and five official [NSE RSS feeds](https://www.nseindia.com/static/rss-feed): announcements, financial results, board meetings, shareholding and annual reports. Sources & coverage exposes manual collection; AWS ingestion workers accept the same source jobs. A live check in an isolated temporary database collected 32 SEC filing records and one annual-profit observation for Tesla. The NSE announcements request succeeded but returned no matching Reliance record; this says nothing about activity outside that feed.
+
+SEC identification uses an exact normalized issuer-name match against its directory, or an explicitly reviewed CIK mapping in the dossier. Ambiguous or missing matches fail visibly. `SEC_USER_AGENT` must identify the application and contact; load it through the existing Secrets Manager runtime secret. Recent supported filing metadata is imported with original links; metadata does not establish a completed deal. Annual `us-gaap:NetIncomeLoss` USD facts are extracted separately; quarterly results, revenue and market capitalization are not substituted. IFRS/custom-taxonomy extraction and complete archival ingestion are not implemented.
+
+NSE shares feed caches across companies, rejects entity declarations and oversized XML, and matches registered names/aliases. Feed types have separate company watermarks, so checking ownership does not mark announcements fresh. RSS descriptions are metadata rather than parsed PDF evidence. Coverage and ambiguous/short aliases still need review.
+
+`server/financials.py` evaluates **valuation OR annual net profit strictly greater than USD 500M** from dated observations. Non-USD observations require a supplied FX rate and a source dated within seven days. Valuations expire after 120 days and annual-profit observations after 550 days: explicit pilot policies. A reviewed form supports Indian and other companies without inventing conversion rates. Qualification appears in dossiers, workspace and paginated company API. Most catalog candidates remain unverified until evidence is collected.
+
+Each observation becomes a citable research event. Disputing or retracting that event removes its observation from financial qualification. Source-backed qualification is not an independent audit.
+
+## People, monitoring, alerts and corrections
+
+People & capital lists distinct people, funds and trusts and supports adding sourced public profiles, companies and technologies. Existing reviewed graph evidence links entities with dated relationships; current leaders and owners are not inferred from profile names.
+
+Company dossiers configure monitoring enablement, priority, desired cadence, source set and minimum alert materiality. The API also supports event-type filters. The disabled-by-default AWS schedule now proposes a five-minute tick. Each tick fans out due company/source jobs, honors source-specific last success, prioritizes higher-priority companies and caps dispatch at `ATLAS_SCHEDULE_BATCH_SIZE` (default 100). Actual cadence remains constrained by source cooldowns, queues and scheduler activation.
+
+New matching non-demo events create deduplicated **in-app** alerts. Their 1–5 scores are explainable keyword heuristics, not calibrated impact predictions. No external messages are sent. Alert generation follows event persistence and is not a transactional notification outbox.
+
+The evidence dossier supports sourced review, dispute and retraction. It preserves the prior record, updates dependent relationships, flags supported hypotheses for review and withdraws or marks existing alerts. Current retrieval and graph views exclude disputed/retracted records; historical research can use the pre-correction version. Sentence-level contradiction and entailment checks remain future work.
 
 ## Optional real CrewAI team
 
@@ -73,10 +95,32 @@ A completed cited AI investigation can be saved as a **Draft** in Strategy radar
 - Worker source requests wait through the shared cooldown with bounded retries; long jobs renew their SQS visibility lease.
 - Completed analysis deliveries skip repeated inference.
 - Provider failures retain retrieval evidence and stage traces.
+- LangGraph checkpoints use `langgraph-checkpoint-sqlite` in the application database. An interrupted provider call resumes the saved graph node rather than repeating retrieval. Terminal failed/deferred attempts start a new graph attempt; completed SQS deliveries skip inference. Resume retains the evidence snapshot from the original attempt rather than silently refreshing it.
 - API startup preserves jobs owned by durable workers.
 - The deployment document fixes ownership of the mounted database directory for non-root containers.
 - No CloudWatch or Bedrock service is added.
 
 ## Remaining roadmap
 
-Primary India/SEC adapters, verified $500M qualification, normalized temporal claims and correction propagation, true graph checkpoint resume, semantic retrieval evaluation, priority-specific monitoring rules, notifications and PostgreSQL migration remain tracked in `PRODUCT_UPGRADE_PLAN.md`. The catalog and extra agents do not make those capabilities complete. Container builds still require validation on a running Docker daemon or CI.
+Verification on 31 October 2026: core backend 58 passed with one optional CrewAI module skipped; isolated CrewAI environment 60 passed; all 13 Chromium desktop/mobile workflows passed; frontend production build and Terraform format/validation passed. These are functional regression checks, not evidence of complete source coverage or evaluated prediction quality. The Docker daemon was unavailable for image-build verification; CI contains the container-build check. No deployment or Terraform apply was performed.
+
+```mermaid
+flowchart LR
+    Registry[Company and public-profile registry] --> Rules[Watch rules and reviewed identifiers]
+    Rules --> Ingest[GDELT / SEC / NSE ingestion]
+    Ingest --> Ledger[Versioned events and financial observations]
+    Ledger --> Graph[Reviewed relationships]
+    Ledger --> Qualify[Dated USD 500M qualification]
+    Ledger --> Alerts[In-app materiality alerts]
+    Ledger --> RAG[LangGraph retrieval and checkpoints]
+    Graph --> RAG
+    RAG --> Groq[Groq standard or optional CrewAI analysis]
+    Groq --> Draft[Cited draft hypotheses and alternatives]
+    Review[Sourced corrections] --> Ledger
+    Review --> Graph
+    Review --> Qualify
+    Review --> Alerts
+    Review --> Draft
+```
+
+Complete social ingestion, additional permitted issuer feeds, full-document/PDF parsing, automatic sourced leadership enrichment, claim-level temporal models and entailment, semantic retrieval evaluation, event clustering, external notifications, transactional alert delivery and PostgreSQL migration remain in `PRODUCT_UPGRADE_PLAN.md`. Access to X or LinkedIn is not assumed to provide free unrestricted monitoring. This product does not provide complete real-time global coverage or reveal private intentions. Container builds still require validation on a running Docker daemon or CI. Deployment and Terraform apply remain owner-operated.

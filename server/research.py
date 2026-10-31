@@ -26,7 +26,10 @@ def _persist_stage(job: dict, node: str, update: dict) -> None:
 
 def run(job):
     job["status"] = "running"
-    job["trace"] = []
+    for key in ('error','finished_at'):
+        job.pop(key,None)
+    if not job.get('workflow_thread'):
+        job["trace"] = []
     db.save_job(job)
     try:
         entity = db.get("entity", job["entity_id"])

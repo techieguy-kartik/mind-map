@@ -12,7 +12,7 @@ import os
 import threading
 from typing import Any
 
-SECRET_KEYS = ("GROQ_API_KEY", "GROQ_MODEL", "ATLAS_ACCESS_TOKEN")
+SECRET_KEYS = ("GROQ_API_KEY", "GROQ_MODEL", "ATLAS_ACCESS_TOKEN", "SEC_USER_AGENT")
 _lock = threading.Lock()
 _loaded_secret_id: str | None = None
 

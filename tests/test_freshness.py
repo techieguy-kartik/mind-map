@@ -82,3 +82,14 @@ def test_one_article_can_link_multiple_named_companies_without_duplicate_events(
         assert sources._collect('jio')['inserted']==0
     matched=[row for row in db.records('event') if row.get('source_url')=='https://example.org/multi-company']
     assert len(matched)==1 and set(matched[0]['entities'])=={'tesla','jio'}
+
+
+def test_scheduler_bounds_fanout_and_honors_priority_and_source_freshness(storage,monkeypatch):
+    monkeypatch.setenv('ATLAS_SCHEDULE_BATCH_SIZE','1')
+    db.put('watch_rule',{'id':'tesla','enabled':True,'priority':5,'interval_seconds':300,'sources':['sec','gdelt']})
+    db.put('watch_rule',{'id':'jio','enabled':True,'priority':1,'interval_seconds':300,'sources':['gdelt']})
+    db.put('source_entity_run',{'id':'gdelt:tesla','status':'Healthy','last_success':datetime.now(timezone.utc).isoformat()})
+    with patch('server.worker._watchlist',return_value=['jio','tesla']),patch('server.worker._checkpoint'),patch('server.worker.cloud.dispatch') as dispatch:
+        result=worker.execute({'version':1,'job_id':'scheduled','action':'sync_watchlist'},'ingestion')
+    dispatch.assert_called_once_with('ingestion','sync_entity',entity_id='tesla',source_id='sec')
+    assert result=={'queued':1,'entities':1,'due':2,'remaining':1}

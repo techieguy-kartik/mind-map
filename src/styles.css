@@ -19,3 +19,5 @@
 .evidence-link small{display:block;color:#a1ad98;margin-top:5px;font-size:9px}.workflow-trace{display:flex;gap:7px;flex-wrap:wrap}.workflow-trace div{display:flex;align-items:center;gap:5px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;color:#7d946b;font-size:9px}
 
 .registry-coverage{padding:22px;border-top:1px solid var(--line)}.registry-coverage p{font-size:11px;color:#859087;margin:8px 0 16px}.registry-coverage>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.registry-coverage span{padding:10px;border:1px solid var(--line);border-radius:6px;font-size:11px}.registry-coverage strong{display:block;margin-bottom:4px}.registry-coverage small{color:#9c8355}
+
+.feature-form{margin:18px 0;padding:15px;border:1px solid var(--line);border-radius:7px;background:#fff}.feature-form summary{cursor:pointer;font-weight:600;font-size:12px;color:#526c41}.feature-form form{margin-top:16px}.feature-form label{margin:10px 0}.feature-form p{font-size:11px;color:#859087;margin:10px 0}.sidebar{overflow-y:auto}.sidebar-bottom{padding-top:20px}

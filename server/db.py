@@ -35,6 +35,14 @@ def initialize(*, recover_jobs=True):
         CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS source_leases(source TEXT PRIMARY KEY, next_allowed REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS changes(seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, item_id TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS record_history(seq INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT NOT NULL,item_id TEXT NOT NULL,recorded_at TEXT NOT NULL,data TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS history_lookup ON record_history(kind,item_id,recorded_at);
+        CREATE TRIGGER IF NOT EXISTS history_insert AFTER INSERT ON records
+          WHEN NEW.kind IN ('event','edge','hypothesis','financial') BEGIN
+          INSERT INTO record_history(kind,item_id,recorded_at,data) VALUES(NEW.kind,NEW.id,COALESCE(json_extract(NEW.data,'$.observed_at'),strftime('%Y-%m-%dT%H:%M:%fZ','now')),NEW.data); END;
+        CREATE TRIGGER IF NOT EXISTS history_update AFTER UPDATE ON records
+          WHEN NEW.kind IN ('event','edge','hypothesis','financial') BEGIN
+          INSERT INTO record_history(kind,item_id,recorded_at,data) VALUES(NEW.kind,NEW.id,strftime('%Y-%m-%dT%H:%M:%fZ','now'),NEW.data); END;
         CREATE TRIGGER IF NOT EXISTS records_insert AFTER INSERT ON records BEGIN
           INSERT INTO changes(kind,item_id) VALUES(NEW.kind,NEW.id); END;
         CREATE TRIGGER IF NOT EXISTS records_update AFTER UPDATE ON records BEGIN
@@ -55,6 +63,10 @@ def initialize(*, recover_jobs=True):
             db.executemany('INSERT OR IGNORE INTO watchlist VALUES(?)',[(x,) for x in ('reliance','jio','tata-power','tata-sons','nvidia')])
             db.execute("INSERT INTO meta VALUES('seed_version','1')")
         migrate(db)
+        db.execute("""INSERT INTO record_history(kind,item_id,recorded_at,data)
+          SELECT r.kind,r.id,COALESCE(json_extract(r.data,'$.observed_at'),strftime('%Y-%m-%dT%H:%M:%fZ','now')),r.data FROM records r
+          WHERE r.kind IN ('event','edge','hypothesis','financial') AND NOT EXISTS
+          (SELECT 1 FROM record_history h WHERE h.kind=r.kind AND h.item_id=r.id)""")
         if recover_jobs:
             # The API recovers local in-process work. An SQS worker startup must
             # never interrupt queued jobs before it receives them.
@@ -70,6 +82,13 @@ def records(kind):
         return [json.loads(r['data']) for r in db.execute('SELECT data FROM records WHERE kind=?',(kind,))]
 
 
+def records_at(kind,cutoff):
+    with connect() as connection:
+        return [json.loads(row['data']) for row in connection.execute('''SELECT h.data FROM record_history h
+          JOIN (SELECT item_id,MAX(seq) AS seq FROM record_history WHERE kind=? AND julianday(recorded_at)<=julianday(?) GROUP BY item_id) latest
+          ON h.seq=latest.seq''',(kind,cutoff))]
+
+
 def get(kind, id):
     with connect() as db:
         row=db.execute('SELECT data FROM records WHERE kind=? AND id=?',(kind,id)).fetchone()
@@ -79,6 +98,9 @@ def get(kind, id):
 def put(kind, row):
     with connect() as db:
         db.execute('INSERT INTO records VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data',(kind,row['id'],json.dumps(row)))
+    if kind=='event':
+        from .alerts import evaluate
+        evaluate(row)
 
 
 def save_job(job):

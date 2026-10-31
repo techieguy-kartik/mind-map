@@ -146,3 +146,59 @@ def test_historical_cutoff_excludes_later_observations_and_new_graph_edges():
     results,graph=retrieve({'id':'jio','name':'Jio'},'AI capacity',['technology'],events,edges,demo=False,as_of='2026-02-01T00:00:00+00:00')
     assert [row['id'] for row in results]==['known']
     assert graph==[]
+
+
+def test_provider_interruption_resumes_checkpoint_without_retrieving_again(intelligence_db,monkeypatch):
+    import httpx
+    monkeypatch.setenv('GROQ_API_KEY','fake-test-key')
+    job=make_job('resume-checkpoint')
+    with patch('server.intelligence.workflow.httpx.Client') as client:
+        client.return_value.__enter__.return_value.post.side_effect=httpx.ConnectError('temporary outage')
+        research.run(job)
+    failed=db.get_job(job['id'])
+    assert failed['status']=='failed' and failed['workflow_thread']=='resume-checkpoint:0'
+    with patch('server.intelligence.workflow.retrieve',side_effect=AssertionError('Retrieval must not replay')),patch('server.intelligence.workflow.httpx.Client') as client:
+        response=client.return_value.__enter__.return_value.post.return_value
+        response.status_code=200
+        response.json.return_value={'choices':[{'message':{'content':json.dumps({'result':'Illustrative hypothesis only.','citations':['demo-1'],'alternatives':['Routine work.'],'missing_evidence':['Primary source missing.']})}}]}
+        research.run(failed)
+    saved=db.get_job(job['id'])
+    assert saved['status']=='completed'
+    assert not saved.get('error')
+    assert len([step for step in saved['trace'] if step['node']=='retrieve'])==1
+
+
+def test_live_acquisition_checks_each_selected_source_and_reports_partial_freshness(intelligence_db):
+    db.put('watch_rule',{'id':'jio','sources':['gdelt','india-filings']})
+    def collect(entity_id):
+        db.put('source_entity_run',{'id':f'gdelt:{entity_id}','status':'Healthy','last_success':datetime.now(timezone.utc).isoformat()})
+        return {'status':'Healthy','inserted':0}
+    with patch('server.sources.sync',side_effect=collect),patch('server.primary_sources.sync',return_value={'status':'Error','error':'Fixture unavailable'}) as official:
+        research.run({**make_job('multi-source'),'demo':False,'refresh_sources':True})
+    official.assert_called_once_with('jio','india-filings')
+    saved=db.get_job('multi-source')
+    assert saved['freshness']['status']=='partial'
+    assert [row['status'] for row in saved['freshness']['sources']]==['fresh','never_collected']
+    assert saved['acquisition']['status']=='Error'
+
+
+def test_resume_retrieves_again_when_saved_evidence_has_been_retracted(intelligence_db,monkeypatch):
+    import httpx
+    monkeypatch.setenv('GROQ_API_KEY','fake-test-key')
+    now=datetime.now(timezone.utc).isoformat()
+    event={'id':'withdraw-before-resume','entity_id':'jio','entities':['jio'],'title':'Jio valuation disclosure',
+        'summary':'Test-only valuation evidence','status':'Reported','demo':False,'published_at':now,'observed_at':now}
+    db.put('event',event)
+    job={**make_job('retracted-checkpoint'),'demo':False}
+    with patch('server.intelligence.workflow.httpx.Client') as client:
+        client.return_value.__enter__.return_value.post.side_effect=httpx.ConnectError('interrupted')
+        research.run(job)
+    failed=db.get_job(job['id'])
+    assert failed['status']=='failed' and failed['evidence']
+    db.put('event',{**event,'status':'Retracted'})
+    with patch('server.intelligence.workflow.httpx.Client') as client:
+        research.run(failed)
+        client.assert_not_called()
+    saved=db.get_job(job['id'])
+    assert saved['status']=='completed' and saved['workflow_attempt']==1
+    assert saved['citations']==[] and 'Insufficient evidence' in saved['result']

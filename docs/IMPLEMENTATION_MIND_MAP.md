@@ -2,6 +2,8 @@
 
 This map represents the operational knowledge system, not merely a presentation diagram. Import this Markdown into Xmind, or render the Mermaid map below in compatible Markdown tools.
 
+This is the full product blueprint, including planned connectors and models. For the implemented data flow, current capabilities and remaining limits, see [IMPLEMENTED_UPGRADE.md](IMPLEMENTED_UPGRADE.md).
+
 ```mermaid
 mindmap
   root((Atlas Intelligence))

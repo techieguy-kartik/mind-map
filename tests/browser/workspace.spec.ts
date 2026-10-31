@@ -100,3 +100,57 @@ test('desktop screenshot',async({page})=>{
   await expect(page.locator('.stats')).toBeVisible();
   await page.screenshot({path:'test-results/desktop.png',fullPage:true});
 });
+
+test('reviewed financial evidence qualifies a company and monitoring rules persist',async({page})=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'Companies',exact:true}).click();
+  await page.getByRole('textbox',{name:'Search workspace'}).fill('Jio Platforms');
+  await page.locator('.company-name').filter({hasText:'Jio Platforms'}).first().click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByText('Record reviewed financial evidence',{exact:true}).click();
+  const financial=dialog.locator('form').filter({has:page.getByRole('button',{name:'Save financial evidence'})});
+  await financial.getByRole('combobox',{name:'Metric',exact:true}).selectOption('valuation');
+  await financial.getByLabel('Amount in original currency').fill('800000000');
+  await financial.getByLabel('As-of / annual period end').fill(new Date().toISOString().slice(0,10));
+  await financial.getByLabel('Source URL',{exact:true}).fill('https://example.org/browser-fixture-valuation');
+  await financial.getByLabel('Publisher',{exact:true}).fill('Browser test fixture');
+  await financial.getByRole('checkbox').check();
+  await financial.getByRole('button',{name:'Save financial evidence'}).click();
+  await expect(dialog.getByRole('heading',{name:'Financial qualification · qualified',exact:true})).toBeVisible();
+  await dialog.getByLabel('Priority (1–5)',{exact:true}).fill('5');
+  await dialog.getByLabel('Desired check interval').selectOption('900');
+  await dialog.getByRole('button',{name:'Save monitoring rules'}).click();
+  await expect(dialog.getByRole('status')).toContainText('Watch rules saved');
+  const rule=await page.request.get('/api/entities/jio/dossier');
+  expect((await rule.json()).watch_rule).toMatchObject({priority:5,interval_seconds:900});
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.company-row').filter({hasText:'Jio Platforms'}).first()).toContainText('Qualified by recorded evidence');
+});
+
+test('people page creates a sourced public profile',async({page})=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'People & capital',exact:true}).click();
+  await page.getByText('Add a sourced person, fund, trust or company',{exact:true}).click();
+  const form=page.locator('form').filter({has:page.getByRole('button',{name:'Create entity'})});
+  const name='Browser fixture person '+Date.now();
+  await form.getByLabel('Name',{exact:true}).fill(name);
+  await form.getByLabel('Country',{exact:true}).fill('India');
+  await form.getByLabel('Sector / professional domain').fill('Research');
+  await form.getByLabel('Public source URL').fill('https://example.org/browser-fixture-profile');
+  await form.getByLabel('Precisely sourced description').fill('Test-only public professional profile fixture.');
+  await form.getByRole('button',{name:'Create entity'}).click();
+  await page.getByRole('button',{name:new RegExp(name)}).click();
+  await expect(page.getByRole('dialog')).toContainText('People, ownership & relationships');
+});
+
+test('official source collection sends the selected company and disclosure feed',async({page})=>{
+  await page.route('**/api/sources/india-filings/primary-sync',async route=>{
+    expect(route.request().postDataJSON()).toEqual({entity_id:'jio',feed:'ownership'});
+    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({status:'Healthy',inserted:2})});
+  });
+  await page.goto('/');
+  await page.getByRole('button',{name:'Sources & coverage',exact:true}).click();
+  await page.getByLabel('NSE disclosure feed').selectOption('ownership');
+  await page.locator('.source-card').filter({hasText:'India company disclosures'}).getByRole('button',{name:'Collect official records'}).click();
+  await expect(page.getByRole('status')).toContainText('Collected 2 official records');
+});
