@@ -102,7 +102,7 @@ A completed cited AI investigation can be saved as a **Draft** in Strategy radar
 
 ## Remaining roadmap
 
-Verification on 31 October 2026: core backend 58 passed with one optional CrewAI module skipped; isolated CrewAI environment 60 passed; all 13 Chromium desktop/mobile workflows passed; frontend production build and Terraform format/validation passed. These are functional regression checks, not evidence of complete source coverage or evaluated prediction quality. The Docker daemon was unavailable for image-build verification; CI contains the container-build check. No deployment or Terraform apply was performed.
+Verification on 31 October 2026: core backend 58 passed with one optional CrewAI module skipped; isolated CrewAI environment 60 passed; all 13 Chromium desktop/mobile workflows passed; frontend production build and Terraform format/validation passed. These are functional regression checks, not evidence of complete source coverage or evaluated prediction quality. The local Docker daemon was unavailable, but the standard image built successfully in [GitHub Actions run 41168030817](https://github.com/techieguy-kartik/mind-map/actions/runs/41168030817); all four CI jobs passed for implementation commit `039c5c0`. The optional CrewAI image is not built by that CI job and remains unverified as an image. No deployment or Terraform apply was performed.
 
 ```mermaid
 flowchart LR
@@ -123,4 +123,4 @@ flowchart LR
     Review --> Draft
 ```
 
-Complete social ingestion, additional permitted issuer feeds, full-document/PDF parsing, automatic sourced leadership enrichment, claim-level temporal models and entailment, semantic retrieval evaluation, event clustering, external notifications, transactional alert delivery and PostgreSQL migration remain in `PRODUCT_UPGRADE_PLAN.md`. Access to X or LinkedIn is not assumed to provide free unrestricted monitoring. This product does not provide complete real-time global coverage or reveal private intentions. Container builds still require validation on a running Docker daemon or CI. Deployment and Terraform apply remain owner-operated.
+Complete social ingestion, additional permitted issuer feeds, full-document/PDF parsing, automatic sourced leadership enrichment, claim-level temporal models and entailment, semantic retrieval evaluation, event clustering, external notifications, transactional alert delivery and PostgreSQL migration remain in `PRODUCT_UPGRADE_PLAN.md`. Access to X or LinkedIn is not assumed to provide free unrestricted monitoring. This product does not provide complete real-time global coverage or reveal private intentions. The standard container build passed CI; the optional CrewAI container build still requires separate validation. Deployment and Terraform apply remain owner-operated.
