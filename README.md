@@ -65,6 +65,7 @@ The API suite covers persistence, authentication, quotas, evidence validation, p
 
 ## Documents
 
+- [V2 strategy, investment portfolios and business-gap plan](docs/STRATEGY_INTELLIGENCE_V2_PLAN.md)
 - [Implemented upgrade and CrewAI deployment options](docs/IMPLEMENTED_UPGRADE.md)
 - [Product audit and complete upgrade plan](docs/PRODUCT_UPGRADE_PLAN.md)
 - [Software design requirements](docs/SOFTWARE_DESIGN_REQUIREMENTS.md)

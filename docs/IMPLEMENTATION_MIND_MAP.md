@@ -4,6 +4,8 @@ This map represents the operational knowledge system, not merely a presentation 
 
 This is the full product blueprint, including planned connectors and models. For the implemented data flow, current capabilities and remaining limits, see [IMPLEMENTED_UPGRADE.md](IMPLEMENTED_UPGRADE.md).
 
+The [V2 strategy and business-gap plan](STRATEGY_INTELLIGENCE_V2_PLAN.md) adds the business-unit/capability/portfolio knowledge map and an implementation DAG for strategic and opportunity analysis.
+
 ```mermaid
 mindmap
   root((Atlas Intelligence))

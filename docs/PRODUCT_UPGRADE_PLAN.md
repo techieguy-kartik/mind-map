@@ -4,6 +4,8 @@ Decision date: 29 October 2026. Scope: the complete company-intelligence product
 
 Delivery update, 31 October 2026: the audit table below records the original baseline. Catalog migration, primary SEC/NSE adapters, dated financial qualification, multi-source refresh, record-version history, correction propagation, durable LangGraph checkpoints, monitoring rules and in-app alerts now have implementations. See [IMPLEMENTED_UPGRADE.md](IMPLEMENTED_UPGRADE.md) for tested behavior and remaining limits; future acceptance gates are not implied to have passed.
 
+The next strategic product increment is specified in [STRATEGY_INTELLIGENCE_V2_PLAN.md](STRATEGY_INTELLIGENCE_V2_PLAN.md): business units and capabilities, reconciled capital portfolios, competing strategic explanations and evidence-backed business-gap discovery. Its source/ledger foundation precedes broader agent expansion.
+
 ## Product outcome
 
 At any time, a user can ask what changed for a company, person, sector, or investment theme; receive the latest available collected evidence; see exactly when each source was checked; and inspect a defensible strategy hypothesis with alternatives and disconfirming evidence. India is a first-class market: Reliance operating companies, Jio, Tata companies and trusts, Adani, Mahindra, Bharti, JSW and other groups retain distinct legal identities.
